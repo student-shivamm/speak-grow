@@ -93,13 +93,12 @@ const PracticePage = () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return;
 
-    const recognition: SpeechRecognition = new SR() as unknown as SpeechRecognition;
     setError(null);
     setTranscript("");
     setInterimTranscript("");
     setElapsed(0);
 
-    const recognition = new SR();
+    const recognition = new SR() as unknown as SpeechRecognition;
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "en-US";
