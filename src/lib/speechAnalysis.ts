@@ -29,6 +29,7 @@ export interface SpeechAnalysisResult {
   structure: StructureAnalysis;
   suggestions: string[];
   highlightedTranscript: string;
+  aiAnalysis?: string;
 }
 
 export interface StructureAnalysis {

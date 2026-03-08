@@ -16,8 +16,9 @@ export const useCreditStore = create<CreditStore>((set) => ({
   lastAnalysis: null,
 
   initCredits: () => {
-    const credits = initializeCredits();
-    set({ credits });
+    // Force 999 credits for testing purposes to bypass localStorage cache
+    setCredits(999);
+    set({ credits: 999 });
   },
 
   consumeCredit: () => {

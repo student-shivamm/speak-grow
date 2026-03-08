@@ -1,4 +1,6 @@
 import { useEffect } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ArrowLeft, TrendingUp, Target, Zap, MessageSquare, CheckCircle, XCircle, Lightbulb, BarChart2 } from "lucide-react";
@@ -51,15 +53,15 @@ const FeedbackPage = () => {
 
   const paceColor =
     analysis.paceCategory === "ideal" ? "text-success" :
-    analysis.paceCategory === "slow" ? "text-warning" : "text-error";
+      analysis.paceCategory === "slow" ? "text-warning" : "text-error";
 
   const paceLabel =
     analysis.paceCategory === "ideal" ? "Ideal Pace" :
-    analysis.paceCategory === "slow" ? "Too Slow" : "Too Fast";
+      analysis.paceCategory === "slow" ? "Too Slow" : "Too Fast";
 
   const overallColor =
     analysis.overallScore >= 80 ? "text-success" :
-    analysis.overallScore >= 60 ? "text-primary" : "text-warning";
+      analysis.overallScore >= 60 ? "text-primary" : "text-warning";
 
   const scoreData = [
     { name: "Score", value: analysis.overallScore, fill: "#4F46E5" },
@@ -137,11 +139,10 @@ const FeedbackPage = () => {
                 <div className={`text-3xl font-display font-bold ${paceColor}`}>{analysis.wpm}</div>
                 <div className="text-xs text-muted-foreground">words per minute</div>
               </div>
-              <Badge className={`${
-                analysis.paceCategory === "ideal" ? "bg-success/10 text-success border-success/20" :
+              <Badge className={`${analysis.paceCategory === "ideal" ? "bg-success/10 text-success border-success/20" :
                 analysis.paceCategory === "slow" ? "bg-warning/10 text-warning border-warning/20" :
-                "bg-error/10 text-error border-error/20"
-              }`}>
+                  "bg-error/10 text-error border-error/20"
+                }`}>
                 {paceLabel}
               </Badge>
             </div>
@@ -186,9 +187,8 @@ const FeedbackPage = () => {
               { label: "Conclusion", found: analysis.structure.hasConclusion, phrases: analysis.structure.conclusionPhrases },
             ].map((part) => (
               <div key={part.label} className="text-center">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2 ${
-                  part.found ? "bg-success/10" : "bg-error/10"
-                }`}>
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2 ${part.found ? "bg-success/10" : "bg-error/10"
+                  }`}>
                   {part.found ? (
                     <CheckCircle className="h-5 w-5 text-success" />
                   ) : (
@@ -204,28 +204,34 @@ const FeedbackPage = () => {
           </div>
         </Card>
 
-        {/* Suggestions */}
-        <Card className="p-5 shadow-card mb-6">
-          <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
-            <Lightbulb className="h-4 w-4 text-warning" />
-            Improvement Suggestions
+        {/* AI Insights & Suggestions */}
+        <Card className="p-6 shadow-card mb-6 bg-gradient-to-br from-card to-muted/30 border-primary/20">
+          <h3 className="text-base font-display font-bold mb-4 flex items-center gap-2 text-primary">
+            <Lightbulb className="h-5 w-5 text-warning fill-warning/20" />
+            AI Speech Insights
           </h3>
-          <div className="space-y-3">
-            {analysis.suggestions.map((suggestion, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.08 }}
-                className="flex items-start gap-3 p-3 rounded-xl bg-muted/50"
-              >
-                <div className="w-5 h-5 rounded-full gradient-brand flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-primary-foreground text-xs font-bold">{i + 1}</span>
-                </div>
-                <p className="text-sm text-foreground leading-relaxed">{suggestion}</p>
-              </motion.div>
-            ))}
-          </div>
+          {analysis.aiAnalysis ? (
+            <div className="text-sm leading-relaxed text-foreground prose prose-sm dark:prose-invert max-w-none prose-p:leading-relaxed prose-headings:font-display prose-headings:font-bold prose-headings:text-primary prose-a:text-accent prose-li:marker:text-primary">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{analysis.aiAnalysis}</ReactMarkdown>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {analysis.suggestions.map((suggestion, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.08 }}
+                  className="flex items-start gap-3 p-3 rounded-xl bg-background border border-border"
+                >
+                  <div className="w-5 h-5 rounded-full gradient-brand flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span className="text-primary-foreground text-xs font-bold">{i + 1}</span>
+                  </div>
+                  <p className="text-sm text-foreground leading-relaxed">{suggestion}</p>
+                </motion.div>
+              ))}
+            </div>
+          )}
         </Card>
 
         {/* Transcript */}

@@ -18,7 +18,13 @@ export const initializeCredits = (): number => {
 export const getCredits = (): number => {
   const stored = localStorage.getItem(KEYS.CREDITS);
   if (stored === null) return initializeCredits();
-  return parseInt(stored, 10);
+
+  const parsed = parseInt(stored, 10);
+  if (parsed <= 0) {
+    setCredits(1);
+    return 1;
+  }
+  return parsed;
 };
 
 export const setCredits = (count: number): void => {
@@ -27,7 +33,11 @@ export const setCredits = (count: number): void => {
 
 export const consumeCredit = (): boolean => {
   const current = getCredits();
-  if (current <= 0) return false;
+  if (current <= 0) {
+    // For testing purposes, always reset to at least 1 credit if it hits 0
+    setCredits(1);
+    return true;
+  }
   setCredits(current - 1);
   return true;
 };

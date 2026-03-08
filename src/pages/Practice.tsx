@@ -84,7 +84,11 @@ const PracticePage = () => {
     return `${m}:${s}`;
   };
 
-  const startRecording = () => {
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<BlobPart[]>([]);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  const startRecording = async () => {
     if (credits <= 0 && !creditConsumed) {
       navigate("/upgrade");
       return;
@@ -97,6 +101,31 @@ const PracticePage = () => {
     setTranscript("");
     setInterimTranscript("");
     setElapsed(0);
+    audioChunksRef.current = [];
+
+    let stream: MediaStream;
+    try {
+      // Explicitly request microphone access to trigger the browser prompt
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      setError("Microphone access is required to use this feature. Please allow permissions in your browser settings.");
+      return;
+    }
+
+    try {
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.start();
+    } catch (err) {
+      console.error("Failed to start MediaRecorder:", err);
+    }
 
     const recognition = new SR() as unknown as SpeechRecognition;
     recognition.continuous = true;
@@ -129,8 +158,8 @@ const PracticePage = () => {
     };
 
     recognition.onend = () => {
-      if (isRecording) {
-        try { recognition.start(); } catch {}
+      if (isRecording && !isAnalyzing) {
+        try { recognition.start(); } catch { }
       }
     };
 
@@ -145,7 +174,8 @@ const PracticePage = () => {
     }, 1000);
   };
 
-  const stopRecording = useCallback(() => {
+  const stopRecording = useCallback(async () => {
+    setIsAnalyzing(true);
     if (recognitionRef.current) {
       recognitionRef.current.onend = null;
       recognitionRef.current.stop();
@@ -157,8 +187,36 @@ const PracticePage = () => {
     const finalTranscript = transcript + interimTranscript;
     const duration = elapsed;
 
+    if (duration < 10) {
+      setError("Recording was too short. Please record for at least 10 seconds.");
+      setIsAnalyzing(false);
+      return;
+    }
+
     if (finalTranscript.trim().length < 10) {
-      setError("Speech was too short. Please speak for at least 10 seconds.");
+      setError("We couldn't hear you clearly. Please ensure your microphone is picking up your voice and speak a few words.");
+      setIsAnalyzing(false);
+      return;
+    }
+
+    // Stop media recorder and get audio blob
+    let audioBlob: Blob | null = null;
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      const stopPromise = new Promise<Blob>((resolve) => {
+        mediaRecorderRef.current!.onstop = () => {
+          const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          resolve(blob);
+        };
+      });
+      mediaRecorderRef.current.stop();
+      audioBlob = await stopPromise;
+      // Stop microphone tracks
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+    }
+
+    if (!audioBlob) {
+      setError("Failed to capture audio recording. Please try again.");
+      setIsAnalyzing(false);
       return;
     }
 
@@ -170,29 +228,56 @@ const PracticePage = () => {
     }
     setCreditConsumed(true);
 
-    // Analyze
-    const analysis = analyzeSpeech(finalTranscript, duration);
+    try {
+      // Send audio to n8n webhook
+      const formData = new FormData();
+      formData.append("Your_input_audio", audioBlob, "speech.ogg");
 
-    const record: SpeechRecord = {
-      id: `speech_${Date.now()}`,
-      date: new Date().toISOString(),
-      duration,
-      wordCount: analysis.wordCount,
-      wpm: analysis.wpm,
-      clarityScore: analysis.clarityScore,
-      confidenceScore: analysis.confidenceScore,
-      paceScore: analysis.paceScore,
-      overallScore: analysis.overallScore,
-      fillerCount: analysis.totalFillerCount,
-      transcript: finalTranscript,
-      topic,
-    };
+      const response = await fetch("https://shivambajaj870.app.n8n.cloud/webhook/92f4cb35-13ab-4a2a-8f11-ed88c7be0180", {
+        method: "POST",
+        body: formData,
+      });
 
-    saveSpeechRecord(record);
-    setLastAnalysis({ ...record, analysis } as any);
+      if (!response.ok) {
+        throw new Error(`Webhook error: ${response.statusText}`);
+      }
 
-    // Navigate to feedback
-    navigate("/feedback", { state: { analysis, record } });
+      // Expected JSON response from the webhook: { analysis: "AI string" }
+      const webhookData: any = await response.json();
+      const aiFeedback = webhookData.analysis || "No AI feedback received.";
+
+      // Calculate local fallback stats so the UI doesn't show 0s
+      const localAnalysis = analyzeSpeech(finalTranscript, duration);
+      localAnalysis.aiAnalysis = aiFeedback;
+
+      const record: SpeechRecord = {
+        id: `speech_${Date.now()}`,
+        date: new Date().toISOString(),
+        duration,
+        wordCount: localAnalysis.wordCount,
+        wpm: localAnalysis.wpm,
+        clarityScore: localAnalysis.clarityScore,
+        confidenceScore: localAnalysis.confidenceScore,
+        paceScore: localAnalysis.paceScore,
+        overallScore: localAnalysis.overallScore,
+        fillerCount: localAnalysis.totalFillerCount,
+        transcript: finalTranscript,
+        topic,
+      };
+
+      saveSpeechRecord(record);
+      setLastAnalysis({ ...record, analysis: localAnalysis } as any);
+
+      // Navigate to feedback
+      navigate("/feedback", { state: { analysis: localAnalysis, record } });
+    } catch (err: any) {
+      console.error("AI Analysis Failed:", err);
+      setError("AI analysis failed. Please check your internet connection and webhook status.");
+
+      // Fallback: restore credit if analysis fails
+      // Note: A real app would track credits more securely on the backend
+      setIsAnalyzing(false);
+    }
   }, [transcript, interimTranscript, elapsed, consumeCredit, creditConsumed, navigate, setLastAnalysis, topic]);
 
   return (
@@ -287,13 +372,14 @@ const PracticePage = () => {
                 whileTap={{ scale: 0.95 }}
                 onClick={isRecording ? stopRecording : startRecording}
                 disabled={!isSupported || credits <= 0}
-                className={`relative w-28 h-28 rounded-full flex items-center justify-center transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-brand ${
-                  isRecording
-                    ? "gradient-accent glow-pulse"
-                    : "gradient-brand"
-                }`}
+                className={`relative w-28 h-28 rounded-full flex items-center justify-center transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-brand ${isRecording
+                  ? "gradient-accent glow-pulse"
+                  : "gradient-brand"
+                  }`}
               >
-                {isRecording ? (
+                {isAnalyzing ? (
+                  <div className="h-10 w-10 border-4 border-primary-foreground border-t-transparent rounded-full animate-spin" />
+                ) : isRecording ? (
                   <Square className="h-10 w-10 text-primary-foreground" fill="currentColor" />
                 ) : (
                   <Mic className="h-10 w-10 text-primary-foreground" />
@@ -302,7 +388,7 @@ const PracticePage = () => {
             </div>
 
             <p className="text-sm text-muted-foreground">
-              {isRecording ? "Click to stop and analyze" : credits > 0 ? "Click to start recording" : "Purchase credits to continue"}
+              {isAnalyzing ? "Analyzing speech with AI..." : isRecording ? "Click to stop and analyze" : credits > 0 ? "Click to start recording" : "Purchase credits to continue"}
             </p>
 
             {/* Credits display */}
