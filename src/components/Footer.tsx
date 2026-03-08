@@ -9,7 +9,7 @@ const Footer = () => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Brand */}
           <div className="md:col-span-1">
-            <img src={logoImage} alt="SpeakBetter" className="h-9 w-auto mb-3" />
+            <img src={logoImage} alt="SpeakGrow" className="h-9 w-auto mb-3" />
             <p className="text-sm text-muted-foreground leading-relaxed">
               AI-powered public speaking practice platform. Improve clarity, confidence, and communication skills.
             </p>
@@ -42,14 +42,17 @@ const Footer = () => {
             </ul>
           </div>
 
-          {/* Company */}
+          {/* Legal */}
           <div>
-            <h4 className="text-sm font-semibold mb-4">Company</h4>
+            <h4 className="text-sm font-semibold mb-4">Legal & Support</h4>
             <ul className="space-y-2.5">
               {[
                 { label: "About Us", href: "/about" },
+                { label: "Contact Us", href: "/contact" },
                 { label: "Privacy Policy", href: "/privacy" },
-                { label: "Contact", href: "/about#contact" },
+                { label: "Terms & Conditions", href: "/terms" },
+                { label: "Refund Policy", href: "/refund" },
+                { label: "Shipping & Delivery", href: "/shipping" },
               ].map((item) => (
                 <li key={item.href}>
                   <Link to={item.href} className="text-sm text-muted-foreground hover:text-primary transition-colors">
@@ -78,11 +81,15 @@ const Footer = () => {
 
         <div className="border-t border-border mt-10 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground">
-            © {new Date().getFullYear()} SpeakBetter. All rights reserved.
+            © {new Date().getFullYear()} SpeakGrow. All rights reserved. Secured by{" "}
+            <span className="font-medium">Razorpay</span>.
           </p>
-          <p className="text-xs text-muted-foreground">
-            Built with ❤️ for better communicators everywhere
-          </p>
+          <div className="flex gap-4 text-xs text-muted-foreground">
+            <Link to="/terms" className="hover:text-primary transition-colors">Terms</Link>
+            <Link to="/privacy" className="hover:text-primary transition-colors">Privacy</Link>
+            <Link to="/refund" className="hover:text-primary transition-colors">Refund</Link>
+            <Link to="/contact" className="hover:text-primary transition-colors">Contact</Link>
+          </div>
         </div>
       </div>
     </footer>
@@ -90,3 +97,4 @@ const Footer = () => {
 };
 
 export default Footer;
+

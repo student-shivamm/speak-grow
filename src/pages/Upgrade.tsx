@@ -80,7 +80,7 @@ const UpgradePage = () => {
       key: RAZORPAY_KEY_ID,
       amount: pkg.price * 100, // paise
       currency: "INR",
-      name: "SpeakBetter",
+      name: "SpeakGrow",
       description: `${pkg.name} — ${pkg.credits} Speech Credits`,
       image: "/favicon.ico",
       handler: function (response: any) {
@@ -138,7 +138,7 @@ const UpgradePage = () => {
             transition={{ delay: 0.2 }}
             className="text-muted-foreground max-w-xl mx-auto"
           >
-            You currently have <span className="font-bold text-accent">{credits} credit{credits !== 1 ? "s" : ""}</span> remaining. 
+            You currently have <span className="font-bold text-accent">{credits} credit{credits !== 1 ? "s" : ""}</span> remaining.
             Each speech practice consumes 1 credit.
           </motion.p>
         </div>
@@ -234,10 +234,6 @@ const UpgradePage = () => {
           </div>
         </div>
 
-        {/* Note */}
-        <p className="text-center text-xs text-muted-foreground mt-6 max-w-lg mx-auto">
-          💡 <strong>Setup Note:</strong> To process real payments, add your Razorpay Key ID as <code className="bg-muted px-1 rounded">VITE_RAZORPAY_KEY_ID</code> in your environment variables and configure your n8n webhook for credit activation.
-        </p>
       </div>
     </div>
   );

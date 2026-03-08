@@ -15,6 +15,10 @@ import FindClubsPage from "./pages/FindClubs";
 import UpgradePage from "./pages/Upgrade";
 import AboutPage from "./pages/About";
 import PrivacyPage from "./pages/Privacy";
+import ContactPage from "./pages/Contact";
+import RefundPage from "./pages/Refund";
+import ShippingPage from "./pages/Shipping";
+import TermsPage from "./pages/Terms";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -47,6 +51,10 @@ const App = () => (
             <Route path="/upgrade" element={<UpgradePage />} />
             <Route path="/about" element={<AboutPage />} />
             <Route path="/privacy" element={<PrivacyPage />} />
+            <Route path="/contact" element={<ContactPage />} />
+            <Route path="/refund" element={<RefundPage />} />
+            <Route path="/shipping" element={<ShippingPage />} />
+            <Route path="/terms" element={<TermsPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AppLayout>
