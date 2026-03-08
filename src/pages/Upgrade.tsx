@@ -52,6 +52,7 @@ const UpgradePage = () => {
   const { credits, addCredits } = useCreditStore();
   const [loading, setLoading] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const loadRazorpay = () => {
     return new Promise<boolean>((resolve) => {
@@ -66,9 +67,11 @@ const UpgradePage = () => {
 
   const handlePurchase = async (pkg: typeof packages[0]) => {
     setLoading(pkg.id);
+    setError(null);
+    setSuccess(null);
     const loaded = await loadRazorpay();
     if (!loaded) {
-      alert("Payment gateway failed to load. Please check your internet connection.");
+      setError("Payment gateway failed to load. Please check your internet connection.");
       setLoading(null);
       return;
     }
@@ -108,6 +111,10 @@ const UpgradePage = () => {
     };
 
     const rzp = new window.Razorpay(options);
+    rzp.on("payment.failed", function (response: any) {
+      setError(`Payment failed: ${response.error.description || "Please try again or use a different payment method."}`);
+      setLoading(null);
+    });
     rzp.open();
   };
 
@@ -152,6 +159,18 @@ const UpgradePage = () => {
           >
             <Check className="h-5 w-5 text-success mt-0.5 flex-shrink-0" />
             <p className="text-sm text-success font-medium">{success}</p>
+          </motion.div>
+        )}
+
+        {/* Error Message */}
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="mb-8 p-4 rounded-xl bg-error/10 border border-error/20 flex items-start gap-3"
+          >
+            <Shield className="h-5 w-5 text-error mt-0.5 flex-shrink-0" />
+            <p className="text-sm text-error font-medium">{error}</p>
           </motion.div>
         )}
 
