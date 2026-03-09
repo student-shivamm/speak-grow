@@ -23,7 +23,7 @@ const Header = () => {
     <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-md border-b border-border">
       <div className="container mx-auto flex h-16 items-center justify-between px-4 relative">
         {/* Logo */}
-        <Link to="/" className="flex items-center gap-2 relative z-10 w-[90px]">
+        <Link to="/" className="flex items-center gap-2 relative z-20 h-full w-[160px] md:w-[200px]">
           <img src={logoImage} alt="SpeakGrow" className="absolute top-1/2 -translate-y-1/2 left-0 h-[90px] w-auto max-w-none pointer-events-none" />
         </Link>
 
