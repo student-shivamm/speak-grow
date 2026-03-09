@@ -39,7 +39,7 @@ const sections = [
     content: [
       "You can clear all locally stored data at any time by clearing your browser's localStorage.",
       "Since we don't require accounts, there's no personal data stored on our servers to delete.",
-      "You can use SpeakBetter anonymously without any registration.",
+      "You can use SpeakGrow anonymously without any registration.",
       "Location data is never stored — it's only used in the moment to generate a Google Maps search URL.",
     ],
   },
@@ -78,7 +78,7 @@ const PrivacyPage = () => {
 
         <div className="bg-success/10 border border-success/20 rounded-2xl p-5 mb-8">
           <p className="text-sm text-success font-medium">
-            🔒 SpeakBetter is designed with privacy by default. Your speech data never leaves your device — all AI analysis happens locally in your browser.
+            🔒 SpeakGrow is designed with privacy by default. Your speech data never leaves your device — all AI analysis happens locally in your browser.
           </p>
         </div>
 
@@ -112,8 +112,8 @@ const PrivacyPage = () => {
 
         <div className="mt-8 text-center text-sm text-muted-foreground">
           <p>Questions about our privacy practices?</p>
-          <a href="mailto:privacy@speakbetter.app" className="text-primary hover:underline">
-            privacy@speakbetter.app
+          <a href="mailto:privacy@speakgrow.app" className="text-primary hover:underline">
+            privacy@speakgrow.app
           </a>
         </div>
       </div>

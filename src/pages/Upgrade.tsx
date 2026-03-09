@@ -5,6 +5,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useCreditStore } from "@/store/creditStore";
+import { useAuthStore } from "@/store/authStore";
+import { supabase } from "@/integrations/supabase/client";
 
 const packages = [
   {
@@ -49,10 +51,13 @@ declare global {
 }
 
 const UpgradePage = () => {
-  const { credits, addCredits } = useCreditStore();
+  const { credits: localCredits, addCredits } = useCreditStore();
+  const { session, profile, refreshProfile } = useAuthStore();
   const [loading, setLoading] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const credits = profile ? profile.credits : localCredits;
 
   const loadRazorpay = () => {
     return new Promise<boolean>((resolve) => {
@@ -86,10 +91,24 @@ const UpgradePage = () => {
       name: "SpeakGrow",
       description: `${pkg.name} — ${pkg.credits} Speech Credits`,
       image: "/favicon.ico",
-      handler: function (response: any) {
+      handler: async function (response: any) {
         // In production: validate via n8n webhook
         // For demo: directly add credits
-        addCredits(pkg.credits);
+
+        if (session && profile) {
+          const newCredits = profile.credits + pkg.credits;
+          const { error } = await supabase
+            .from('users')
+            .update({ credits: newCredits })
+            .eq('id', session.user.id);
+
+          if (!error) {
+            await refreshProfile();
+          }
+        } else {
+          addCredits(pkg.credits);
+        }
+
         setSuccess(`${pkg.credits} credits added successfully! Payment ID: ${response.razorpay_payment_id}`);
         setLoading(null);
       },

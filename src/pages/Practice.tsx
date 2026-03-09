@@ -5,7 +5,9 @@ import { Mic, MicOff, Square, Shuffle, Timer, AlertCircle, Zap } from "lucide-re
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useAuthStore } from "@/store/authStore";
 import { useCreditStore } from "@/store/creditStore";
+import { supabase } from "@/integrations/supabase/client";
 import { analyzeSpeech } from "@/lib/speechAnalysis";
 import { saveSpeechRecord } from "@/lib/localStorage";
 import { getRandomTopic } from "@/data/topics";
@@ -55,7 +57,11 @@ interface SpeechRecognitionAlternative {
 
 const PracticePage = () => {
   const navigate = useNavigate();
-  const { credits, consumeCredit, setLastAnalysis } = useCreditStore();
+  const { profile, session, refreshProfile } = useAuthStore();
+  const { setLastAnalysis } = useCreditStore();
+
+  const credits = profile ? profile.credits : 0;
+
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [interimTranscript, setInterimTranscript] = useState("");
@@ -220,10 +226,23 @@ const PracticePage = () => {
       return;
     }
 
-    // Consume credit
-    const success = consumeCredit();
-    if (!success && !creditConsumed) {
-      navigate("/upgrade");
+    // Consume credit in Supabase
+    if (session && profile) {
+      const newCredits = profile.credits - 1;
+      if (newCredits < 0) {
+        navigate("/upgrade");
+        return;
+      }
+      const { error: dbError } = await supabase
+        .from('users')
+        .update({ credits: newCredits })
+        .eq('id', session.user.id);
+
+      if (!dbError) {
+        await refreshProfile();
+      }
+    } else {
+      navigate("/auth");
       return;
     }
     setCreditConsumed(true);
@@ -278,7 +297,7 @@ const PracticePage = () => {
       // Note: A real app would track credits more securely on the backend
       setIsAnalyzing(false);
     }
-  }, [transcript, interimTranscript, elapsed, consumeCredit, creditConsumed, navigate, setLastAnalysis, topic]);
+  }, [transcript, interimTranscript, elapsed, creditConsumed, navigate, setLastAnalysis, topic, session, profile, refreshProfile]);
 
   return (
     <div className="min-h-screen bg-background py-8">

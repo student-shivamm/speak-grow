@@ -35,7 +35,7 @@ const AboutPage = () => {
         {/* Hero */}
         <div className="text-center mb-14">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <img src={logoImage} alt="SpeakBetter" className="h-16 w-auto mx-auto mb-6" />
+            <img src={logoImage} alt="SpeakGrow" className="max-w-[200px] h-auto mx-auto mb-6" />
           </motion.div>
           <motion.h1
             initial={{ opacity: 0, y: 20 }}
@@ -43,7 +43,7 @@ const AboutPage = () => {
             transition={{ delay: 0.1 }}
             className="text-3xl md:text-5xl font-display font-bold mb-4"
           >
-            About <span className="text-gradient-brand">SpeakBetter</span>
+            About <span className="text-gradient-brand">SpeakGrow</span>
           </motion.h1>
           <motion.p
             initial={{ opacity: 0, y: 20 }}
@@ -51,7 +51,7 @@ const AboutPage = () => {
             transition={{ delay: 0.2 }}
             className="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed"
           >
-            SpeakBetter is an AI-powered public speaking practice platform that helps anyone — 
+            SpeakGrow is an AI-powered public speaking practice platform that helps anyone —
             from students to executives — become a more confident, clear, and compelling communicator.
           </motion.p>
         </div>
@@ -62,12 +62,12 @@ const AboutPage = () => {
           <div className="relative">
             <h2 className="text-xl font-display font-bold mb-4">Our Mission</h2>
             <p className="text-muted-foreground leading-relaxed mb-4">
-              Public speaking is consistently ranked as one of the most feared skills — yet it's one of the most 
-              valuable for career success, leadership, and personal growth. We believe everyone deserves access 
+              Public speaking is consistently ranked as one of the most feared skills — yet it's one of the most
+              valuable for career success, leadership, and personal growth. We believe everyone deserves access
               to quality speaking practice, not just those who can afford private coaches.
             </p>
             <p className="text-muted-foreground leading-relaxed">
-              SpeakBetter uses browser-native technology and AI analysis to provide instant, actionable feedback 
+              SpeakGrow uses browser-native technology and AI analysis to provide instant, actionable feedback
               on your speeches — completely free to get started, with no account required.
             </p>
           </div>
@@ -112,10 +112,10 @@ const AboutPage = () => {
         <div id="contact" className="text-center">
           <h3 className="text-xl font-display font-bold mb-3">Get in Touch</h3>
           <p className="text-muted-foreground mb-5">Have questions, feedback, or partnership inquiries?</p>
-          <a href="mailto:hello@speakbetter.app">
+          <a href="mailto:hello@speakgrow.app">
             <Button variant="outline" className="gap-2">
               <Mail className="h-4 w-4" />
-              hello@speakbetter.app
+              hello@speakgrow.app
             </Button>
           </a>
         </div>

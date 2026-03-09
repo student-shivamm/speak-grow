@@ -7,7 +7,7 @@ const stats = [
   { value: "10K+", label: "Speeches Analyzed" },
   { value: "94%", label: "Improvement Rate" },
   { value: "50+", label: "Speaking Topics" },
-  { value: "Free", label: "To Get Started" },
+  { value: "2", label: "Free Credits" },
 ];
 
 const HeroSection = () => {
@@ -51,8 +51,8 @@ const HeroSection = () => {
             transition={{ duration: 0.5, delay: 0.2 }}
             className="text-lg md:text-xl text-muted-foreground leading-relaxed mb-10 max-w-2xl mx-auto"
           >
-            Improve clarity, confidence, and communication skills by practicing speeches online. 
-            Get instant AI analysis — free, no account required.
+            Improve clarity, confidence, and communication skills by practicing speeches online.
+            Get instant AI analysis — sign up to get your first 2 credits free.
           </motion.p>
 
           {/* CTAs */}
@@ -65,7 +65,7 @@ const HeroSection = () => {
             <Link to="/practice">
               <Button size="lg" className="gradient-brand shadow-brand text-primary-foreground gap-2 h-12 px-8 text-base font-semibold group">
                 <Mic className="h-5 w-5" />
-                Start Practicing Free
+                Start Practicing
                 <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
               </Button>
             </Link>
@@ -113,7 +113,7 @@ const HeroSection = () => {
               </div>
               {/* Mock transcript */}
               <div className="w-full max-w-lg bg-muted rounded-xl p-4 text-sm text-muted-foreground text-center leading-relaxed">
-                "Today I want to talk about the importance of clear communication in everyday life. 
+                "Today I want to talk about the importance of clear communication in everyday life.
                 First, let me start with why most people struggle to express their ideas..."
               </div>
               {/* Mock scores */}
