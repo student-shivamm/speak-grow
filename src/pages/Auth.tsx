@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Auth as SupabaseAuth } from "@supabase/auth-ui-react";
 import { ThemeSupa } from "@supabase/auth-ui-shared";
 import { supabase } from "@/integrations/supabase/client";
@@ -8,13 +8,15 @@ import { motion } from "framer-motion";
 
 const Auth = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const { session } = useAuthStore();
+    const from = location.state?.from?.pathname || "/";
 
     useEffect(() => {
         if (session) {
-            navigate("/");
+            navigate(from, { replace: true });
         }
-    }, [session, navigate]);
+    }, [session, navigate, from]);
 
     return (
         <div className="flex justify-center items-center min-h-[calc(100vh-4rem)] p-4 bg-muted/30">
@@ -54,6 +56,7 @@ const Auth = () => {
                         }
                     }}
                     providers={['google']}
+                    redirectTo={`${window.location.origin}${from}`}
                 />
             </motion.div>
         </div>
