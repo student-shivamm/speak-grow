@@ -13,47 +13,9 @@ import { saveSpeechRecord } from "@/lib/localStorage";
 import { getRandomTopic } from "@/data/topics";
 import type { SpeechRecord } from "@/lib/localStorage";
 
-declare global {
-  interface Window {
-    SpeechRecognition: new () => SpeechRecognition;
-    webkitSpeechRecognition: new () => SpeechRecognition;
-  }
-}
+const DEEPGRAM_API_KEY = import.meta.env.VITE_DEEPGRAM_API_KEY;
+const DEEPGRAM_WS_URL = "wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&interim_results=true&language=en-US";
 
-interface SpeechRecognition extends EventTarget {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start(): void;
-  stop(): void;
-  onresult: ((event: SpeechRecognitionEvent) => void) | null;
-  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
-  onend: (() => void) | null;
-}
-
-interface SpeechRecognitionEvent extends Event {
-  resultIndex: number;
-  results: SpeechRecognitionResultList;
-}
-
-interface SpeechRecognitionErrorEvent extends Event {
-  error: string;
-}
-
-interface SpeechRecognitionResultList {
-  length: number;
-  [index: number]: SpeechRecognitionResult;
-}
-
-interface SpeechRecognitionResult {
-  isFinal: boolean;
-  [index: number]: SpeechRecognitionAlternative;
-}
-
-interface SpeechRecognitionAlternative {
-  transcript: string;
-  confidence: number;
-}
 
 const PracticePage = () => {
   const navigate = useNavigate();
@@ -71,16 +33,22 @@ const PracticePage = () => {
   const [isSupported, setIsSupported] = useState(true);
   const [creditConsumed, setCreditConsumed] = useState(false);
 
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const socketRef = useRef<WebSocket | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number>(0);
 
   useEffect(() => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) setIsSupported(false);
+    // Check if browser supports required APIs
+    if (!window.MediaRecorder || !window.WebSocket) {
+      setIsSupported(false);
+    }
+
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
-      if (recognitionRef.current) recognitionRef.current.stop();
+      if (socketRef.current) socketRef.current.close();
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
     };
   }, []);
 
@@ -110,116 +78,87 @@ const PracticePage = () => {
       return;
     }
 
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return;
-
     setError(null);
     setTranscript("");
     setInterimTranscript("");
     setElapsed(0);
     audioChunksRef.current = [];
 
+    if (!DEEPGRAM_API_KEY) {
+      setError("Deepgram API Key is missing. Please add VITE_DEEPGRAM_API_KEY to your .env file.");
+      return;
+    }
+
     let stream: MediaStream;
     try {
-      // Explicitly request microphone access using constraints that match built-in SpeechRecognition
       stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
       });
     } catch (err) {
-      setError("Microphone access is required to use this feature. Please allow permissions in your browser settings.");
+      setError("Microphone access is required. Please allow permissions in your browser settings.");
       return;
     }
 
-    try {
-      const mediaRecorder = new MediaRecorder(stream);
+    const socket = new WebSocket(DEEPGRAM_WS_URL, ["token", DEEPGRAM_API_KEY]);
+    socketRef.current = socket;
+
+    socket.onopen = () => {
+      console.log("Deepgram connection opened");
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.start();
-    } catch (err) {
-      console.error("Failed to start MediaRecorder:", err);
-    }
-
-    const recognition = new SR() as unknown as SpeechRecognition;
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = "en-US";
-
-    recognition.onresult = (event) => {
-      let final = "";
-      let interim = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const text = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          final += text + " ";
-        } else {
-          interim += text;
-        }
-      }
-      if (final) setTranscript((prev) => prev + final);
-      setInterimTranscript(interim);
-    };
-
-    recognition.onerror = (event) => {
-      const cleanup = () => {
-        isRecordingRef.current = false;
-        setIsRecording(false);
-        if (timerRef.current) clearInterval(timerRef.current);
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-          mediaRecorderRef.current.stop();
-          mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-        }
-      };
-
-      if (event.error === "not-allowed") {
-        setError("Microphone access was denied. Please allow microphone permissions.");
-        cleanup();
-      } else if (event.error === "no-speech") {
-        // ignore
-      } else {
-        setError(`Speech recognition error: ${event.error}`);
-        cleanup();
-      }
-    };
-
-    recognition.onend = () => {
-      if (isRecordingRef.current && !isAnalyzingRef.current) {
-        setTimeout(() => {
-          if (isRecordingRef.current && !isAnalyzingRef.current) {
-            try { recognition.start(); } catch { }
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(event.data);
           }
-        }, 100);
+        }
+      };
+
+      mediaRecorder.start(250); // Send chunks every 250ms
+      setIsRecording(true);
+      isRecordingRef.current = true;
+      startTimeRef.current = Date.now();
+      timerRef.current = setInterval(() => {
+        setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
+      }, 1000);
+    };
+
+    socket.onmessage = (message) => {
+      const received = JSON.parse(message.data);
+      if (received.channel && received.channel.alternatives) {
+        const alt = received.channel.alternatives[0];
+        const text = alt.transcript;
+
+        if (text && received.is_final) {
+          setTranscript((prev) => prev + text + " ");
+          setInterimTranscript("");
+        } else if (text) {
+          setInterimTranscript(text);
+        }
       }
     };
 
-    recognitionRef.current = recognition;
-    setIsRecording(true);
+    socket.onerror = (err) => {
+      console.error("Deepgram WebSocket error:", err);
+      setError("Transcription service error. Please try again.");
+      stopRecording();
+    };
+
+    socket.onclose = () => {
+      console.log("Deepgram connection closed");
+    };
+
     setCreditConsumed(false);
-    isRecordingRef.current = true; // Sync ref before the timeout
-    startTimeRef.current = Date.now();
-
-    // Small delay to prevent hardware lock conflicts with getUserMedia
-    setTimeout(() => {
-      if (isRecordingRef.current && !isAnalyzingRef.current) {
-        try { recognition.start(); } catch (e) { console.error("SpeechRec start error", e); }
-      }
-    }, 400);
-
-    timerRef.current = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
-    }, 1000);
   };
 
   const stopRecording = useCallback(async () => {
     setIsAnalyzing(true);
-    if (recognitionRef.current) {
-      recognitionRef.current.onend = null;
-      recognitionRef.current.stop();
+    if (socketRef.current) {
+      socketRef.current.send(JSON.stringify({ type: 'CloseStream' }));
+      socketRef.current.close();
+      socketRef.current = null;
     }
     if (timerRef.current) clearInterval(timerRef.current);
     setIsRecording(false);
@@ -236,7 +175,7 @@ const PracticePage = () => {
 
     if (finalTranscript.trim().length < 10) {
       if (finalTranscript.trim().length === 0) {
-        setError("Browser speech recognition failed to capture your voice. This can happen on mobile browsers or if another app is locking the mic. Please try using Chrome on Desktop.");
+        setError("Speech recognition could not detect any words. Please ensure your microphone is working and you are speaking clearly.");
       } else {
         setError("We couldn't hear you clearly. Please ensure your microphone is picking up your voice and speak a few words.");
       }
