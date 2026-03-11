@@ -84,6 +84,8 @@ const PracticePage = () => {
     audioChunksRef.current = [];
 
     const API_KEY = import.meta.env.VITE_DEEPGRAM_API_KEY;
+    console.log("All env vars:", import.meta.env);
+    console.log("Deepgram API Key from env:", API_KEY);
 
     if (!API_KEY) {
       setError("Deepgram API Key is missing. Please add VITE_DEEPGRAM_API_KEY to your .env file.");
