@@ -93,6 +93,16 @@ const PracticePage = () => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const isRecordingRef = useRef(false);
+  const isAnalyzingRef = useRef(false);
+
+  useEffect(() => {
+    isRecordingRef.current = isRecording;
+  }, [isRecording]);
+
+  useEffect(() => {
+    isAnalyzingRef.current = isAnalyzing;
+  }, [isAnalyzing]);
 
   const startRecording = async () => {
     if (credits <= 0 && !creditConsumed) {
@@ -154,17 +164,29 @@ const PracticePage = () => {
     };
 
     recognition.onerror = (event) => {
+      const cleanup = () => {
+        isRecordingRef.current = false;
+        setIsRecording(false);
+        if (timerRef.current) clearInterval(timerRef.current);
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+          mediaRecorderRef.current.stop();
+          mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+        }
+      };
+
       if (event.error === "not-allowed") {
         setError("Microphone access was denied. Please allow microphone permissions.");
+        cleanup();
       } else if (event.error === "no-speech") {
         // ignore
       } else {
         setError(`Speech recognition error: ${event.error}`);
+        cleanup();
       }
     };
 
     recognition.onend = () => {
-      if (isRecording && !isAnalyzing) {
+      if (isRecordingRef.current && !isAnalyzingRef.current) {
         try { recognition.start(); } catch { }
       }
     };
