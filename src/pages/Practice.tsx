@@ -13,7 +13,6 @@ import { saveSpeechRecord } from "@/lib/localStorage";
 import { getRandomTopic } from "@/data/topics";
 import type { SpeechRecord } from "@/lib/localStorage";
 
-const DEEPGRAM_API_KEY = import.meta.env.VITE_DEEPGRAM_API_KEY;
 const DEEPGRAM_WS_URL = "wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&interim_results=true&language=en-US";
 
 
@@ -84,7 +83,9 @@ const PracticePage = () => {
     setElapsed(0);
     audioChunksRef.current = [];
 
-    if (!DEEPGRAM_API_KEY) {
+    const API_KEY = import.meta.env.VITE_DEEPGRAM_API_KEY;
+
+    if (!API_KEY) {
       setError("Deepgram API Key is missing. Please add VITE_DEEPGRAM_API_KEY to your .env file.");
       return;
     }
@@ -99,7 +100,7 @@ const PracticePage = () => {
       return;
     }
 
-    const socket = new WebSocket(DEEPGRAM_WS_URL, ["token", DEEPGRAM_API_KEY]);
+    const socket = new WebSocket(DEEPGRAM_WS_URL, ["token", API_KEY]);
     socketRef.current = socket;
 
     socket.onopen = () => {
