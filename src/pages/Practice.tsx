@@ -121,8 +121,10 @@ const PracticePage = () => {
 
     let stream: MediaStream;
     try {
-      // Explicitly request microphone access to trigger the browser prompt
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Explicitly request microphone access using constraints that match built-in SpeechRecognition
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      });
     } catch (err) {
       setError("Microphone access is required to use this feature. Please allow permissions in your browser settings.");
       return;
@@ -187,15 +189,26 @@ const PracticePage = () => {
 
     recognition.onend = () => {
       if (isRecordingRef.current && !isAnalyzingRef.current) {
-        try { recognition.start(); } catch { }
+        setTimeout(() => {
+          if (isRecordingRef.current && !isAnalyzingRef.current) {
+            try { recognition.start(); } catch { }
+          }
+        }, 100);
       }
     };
 
     recognitionRef.current = recognition;
-    recognition.start();
     setIsRecording(true);
     setCreditConsumed(false);
+    isRecordingRef.current = true; // Sync ref before the timeout
     startTimeRef.current = Date.now();
+
+    // Small delay to prevent hardware lock conflicts with getUserMedia
+    setTimeout(() => {
+      if (isRecordingRef.current && !isAnalyzingRef.current) {
+        try { recognition.start(); } catch (e) { console.error("SpeechRec start error", e); }
+      }
+    }, 400);
 
     timerRef.current = setInterval(() => {
       setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
@@ -222,7 +235,11 @@ const PracticePage = () => {
     }
 
     if (finalTranscript.trim().length < 10) {
-      setError("We couldn't hear you clearly. Please ensure your microphone is picking up your voice and speak a few words.");
+      if (finalTranscript.trim().length === 0) {
+        setError("Browser speech recognition failed to capture your voice. This can happen on mobile browsers or if another app is locking the mic. Please try using Chrome on Desktop.");
+      } else {
+        setError("We couldn't hear you clearly. Please ensure your microphone is picking up your voice and speak a few words.");
+      }
       setIsAnalyzing(false);
       return;
     }
