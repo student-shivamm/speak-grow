@@ -61,6 +61,8 @@ export interface SpeechRecord {
   fillerCount: number;
   transcript: string;
   topic?: string;
+  aiAnalysis?: string;
+  idealSpeech?: string;
 }
 
 export const saveSpeechRecord = (record: SpeechRecord): void => {

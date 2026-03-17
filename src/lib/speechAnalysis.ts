@@ -30,6 +30,7 @@ export interface SpeechAnalysisResult {
   suggestions: string[];
   highlightedTranscript: string;
   aiAnalysis?: string;
+  idealSpeech?: string;
 }
 
 export interface StructureAnalysis {

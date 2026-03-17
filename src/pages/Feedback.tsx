@@ -3,7 +3,15 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, TrendingUp, Target, Zap, MessageSquare, CheckCircle, XCircle, Lightbulb, BarChart2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { ArrowLeft, TrendingUp, Target, Zap, MessageSquare, CheckCircle, XCircle, Lightbulb, BarChart2, Star, Sparkles } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -50,6 +58,17 @@ const FeedbackPage = () => {
   if (!state) return null;
 
   const { analysis, record } = state;
+
+  const boldHeadings = (text: string) => {
+    if (!text) return "";
+    // Detects lines starting with A. B. C. or 1. 2. 3. and bolds the heading part
+    // Matches: "A. Heading: " or "1. Heading: " or "1. HEADING CONTENT"
+    return text.replace(/^(\d+\.|[A-Z]\.)\s+(.*?)([:\n]|$)/gm, (match, prefix, content, suffix) => {
+      // If it's already bold, don't double bold
+      if (content.startsWith("**")) return match;
+      return `${prefix} **${content}**${suffix}`;
+    });
+  };
 
   const paceColor =
     analysis.paceCategory === "ideal" ? "text-success" :
@@ -108,7 +127,7 @@ const FeedbackPage = () => {
                 { label: "Words", value: analysis.wordCount },
                 { label: "WPM", value: analysis.wpm },
                 { label: "Duration", value: `${Math.floor(record.duration / 60)}m ${record.duration % 60}s` },
-                { label: "Fillers", value: analysis.totalFillerCount },
+                { label: "Fillers Detected", value: analysis.totalFillerCount > 0 ? "Yes" : "No" },
               ].map((stat) => (
                 <div key={stat.label} className="text-center">
                   <div className="text-xl font-display font-bold">{stat.value}</div>
@@ -155,13 +174,13 @@ const FeedbackPage = () => {
           <Card className="p-5 shadow-card">
             <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
               <MessageSquare className="h-4 w-4 text-warning" />
-              Filler Words ({analysis.totalFillerCount} total)
+              Filler Words
             </h3>
             {analysis.fillerWords.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {analysis.fillerWords.slice(0, 8).map((fw) => (
                   <Badge key={fw.word} variant="outline" className="text-xs bg-warning/10 border-warning/20 text-warning">
-                    "{fw.word}" × {fw.count}
+                    "{fw.word}"
                   </Badge>
                 ))}
               </div>
@@ -210,9 +229,35 @@ const FeedbackPage = () => {
             <Lightbulb className="h-5 w-5 text-warning fill-warning/20" />
             AI Speech Insights
           </h3>
+
+          {analysis.idealSpeech && (
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline" className="w-full mb-6 border-accent/30 bg-accent/5 hover:bg-accent/10 text-accent gap-2 group">
+                  <Sparkles className="h-4 w-4 transition-transform group-hover:rotate-12" />
+                  View Model Speech (200 Words)
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 text-primary">
+                    <Star className="h-5 w-5 text-warning fill-warning/20" />
+                    Ideal Speech: {record.topic || "This Topic"}
+                  </DialogTitle>
+                  <DialogDescription>
+                    A professionally crafted version of how this speech could be delivered.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="mt-4 prose prose-sm dark:prose-invert max-w-none text-foreground leading-relaxed">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{boldHeadings(analysis.idealSpeech || "")}</ReactMarkdown>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
+
           {analysis.aiAnalysis ? (
-            <div className="text-sm leading-relaxed text-foreground prose prose-sm dark:prose-invert max-w-none prose-p:leading-relaxed prose-headings:font-display prose-headings:font-bold prose-headings:text-primary prose-a:text-accent prose-li:marker:text-primary">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{analysis.aiAnalysis}</ReactMarkdown>
+            <div className="text-sm text-foreground prose prose-sm dark:prose-invert max-w-none prose-p:my-1.5 prose-p:leading-relaxed prose-headings:font-display prose-headings:font-bold prose-headings:text-primary prose-headings:mt-3 prose-headings:mb-1 prose-a:text-accent prose-li:marker:text-primary prose-hr:my-3">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{boldHeadings(analysis.aiAnalysis)}</ReactMarkdown>
             </div>
           ) : (
             <div className="space-y-3">

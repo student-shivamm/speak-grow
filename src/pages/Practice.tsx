@@ -227,26 +227,37 @@ const PracticePage = () => {
     setCreditConsumed(true);
 
     try {
-      // Send audio to n8n webhook
+      // Send audio to n8n webhook with a 45-second timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 45000);
+
       const formData = new FormData();
       formData.append("Your_input_audio", audioBlob, "speech.ogg");
+      formData.append("topic", topic);
 
-      const response = await fetch("https://shivambajaj870.app.n8n.cloud/webhook/92f4cb35-13ab-4a2a-8f11-ed88c7be0180", {
+      const webhookUrl = import.meta.env.VITE_N8N_WEBHOOK_URL;
+      if (!webhookUrl) throw new Error("Webhook URL is missing in .env");
+
+      const response = await fetch(webhookUrl, {
         method: "POST",
         body: formData,
+        signal: controller.signal,
       });
 
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
-        throw new Error(`Webhook error: ${response.statusText}`);
+        throw new Error(`Webhook error: ${response.statusText} (${response.status})`);
       }
 
-      // Expected JSON response from the webhook: { analysis: "AI string" }
       const webhookData: any = await response.json();
       const aiFeedback = webhookData.analysis || "No AI feedback received.";
+      const idealSpeech = webhookData.ideal_speech || webhookData.idealSpeech || "";
 
-      // Calculate local fallback stats so the UI doesn't show 0s
+      // Calculate local fallback stats
       const localAnalysis = analyzeSpeech(finalTranscript, duration);
       localAnalysis.aiAnalysis = aiFeedback;
+      localAnalysis.idealSpeech = idealSpeech;
 
       const record: SpeechRecord = {
         id: `speech_${Date.now()}`,
@@ -261,20 +272,25 @@ const PracticePage = () => {
         fillerCount: localAnalysis.totalFillerCount,
         transcript: finalTranscript,
         topic,
+        aiAnalysis: aiFeedback,
+        idealSpeech: idealSpeech,
       };
 
       saveSpeechRecord(record);
       setLastAnalysis({ ...record, analysis: localAnalysis } as any);
 
-      // Navigate to feedback
+      // Navigate to feedback (resetting state first)
+      setIsAnalyzing(false);
       navigate("/feedback", { state: { analysis: localAnalysis, record } });
     } catch (err: any) {
       console.error("AI Analysis Failed:", err);
-      setError("AI analysis failed. Please check your internet connection and webhook status.");
-
-      // Fallback: restore credit if analysis fails
-      // Note: A real app would track credits more securely on the backend
       setIsAnalyzing(false);
+      
+      if (err.name === 'AbortError') {
+        setError("AI Analysis timed out. n8n might be taking too long. Please try again.");
+      } else {
+        setError("AI analysis failed. Please check your internet connection and n8n status.");
+      }
     }
   }, [transcript, interimTranscript, elapsed, creditConsumed, navigate, setLastAnalysis, topic, session, profile, refreshProfile]);
 
