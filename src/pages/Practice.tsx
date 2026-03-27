@@ -219,7 +219,9 @@ const PracticePage = () => {
 
     try {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      if (!apiKey) throw new Error("Gemini API Key is missing. Please add VITE_GEMINI_API_KEY to your .env file.");
+      if (!apiKey) {
+        throw new Error("Your VITE_GEMINI_API_KEY environment variable is missing in Vercel! Please add it in the Vercel Dashboard Settings -> Environment Variables, and redeploy.");
+      }
 
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
@@ -377,7 +379,7 @@ Provide at least 5 such personalized improvements.
       if (err.name === 'AbortError') {
         setError("AI Analysis timed out. Please try again.");
       } else {
-        setError("AI analysis failed. Please check your internet connection and try again.");
+        setError("AI analysis failed: " + (err.message || "Please check your internet connection and try again."));
       }
     }
   }, [transcript, interimTranscript, elapsed, creditConsumed, navigate, setLastAnalysis, topic, session, profile, refreshProfile]);
