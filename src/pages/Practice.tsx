@@ -511,6 +511,13 @@ Provide at least 5 such personalized improvements.
               {isAnalyzing ? "Analyzing speech with AI..." : isRecording ? "Click to stop and analyze" : credits > 0 ? "Click to start recording" : "Purchase credits to continue"}
             </p>
 
+            {/* Wait hint while analyzing */}
+            {isAnalyzing && (
+              <p className="text-xs text-muted-foreground/70 italic text-center max-w-xs">
+                ⏳ This may take 15–30 seconds. Please don't close the page.
+              </p>
+            )}
+
             {/* Credits display */}
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Zap className="h-3.5 w-3.5 text-accent" />
