@@ -316,8 +316,21 @@ Provide at least 5 such personalized improvements.
         },
       };
 
-      const result = await model.generateContent([promptText, audioPart]);
-      const responseText = result.response.text();
+      let result;
+      let retries = 3;
+      while (retries > 0) {
+        try {
+          result = await model.generateContent([promptText, audioPart]);
+          break; // Success
+        } catch (e: any) {
+          retries--;
+          console.warn(`Gemini API failed, retrying... (${retries} retries left)`, e);
+          if (retries === 0) throw e;
+          // Exponential backoff to handle free tier 429 quota limits gracefully
+          await new Promise((r) => setTimeout(r, (4 - retries) * 3000));
+        }
+      }
+      const responseText = result!.response.text();
 
       let aiFeedback = responseText;
       let idealSpeech = "";
