@@ -7,7 +7,7 @@ const stats = [
   { value: "10K+", label: "Speeches Analyzed" },
   { value: "94%", label: "Improvement Rate" },
   { value: "50+", label: "Speaking Topics" },
-  { value: "2", label: "Free Credits" },
+  { value: "5", label: "Free Credits" },
 ];
 
 const HeroSection = () => {
@@ -52,7 +52,7 @@ const HeroSection = () => {
             className="text-lg md:text-xl text-muted-foreground leading-relaxed mb-10 max-w-2xl mx-auto"
           >
             Improve clarity, confidence, and communication skills by practicing speeches online.
-            Get instant AI analysis — sign up to get your first 2 credits free.
+            Get instant AI analysis — sign up to get your first 5 credits free.
           </motion.p>
 
           {/* CTAs */}

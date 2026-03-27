@@ -195,10 +195,28 @@ export const analyzeSpeech = (
   if (wordCount > 100) confidenceScore += 10;
   confidenceScore = Math.round(Math.min(100, Math.max(0, confidenceScore)));
 
+  // DURATION SCORE
+  let durationScore = 50;
+  if (durationSeconds < 30) {
+    durationScore = 30; // Very short
+  } else if (durationSeconds >= 30 && durationSeconds < 120) {
+    // 30s to 2m (scales from 30 to 70)
+    durationScore = 30 + ((durationSeconds - 30) / 90) * 40;
+  } else if (durationSeconds >= 120 && durationSeconds < 240) {
+    // 2m to 4m (scales from 70 to 100)
+    durationScore = 70 + ((durationSeconds - 120) / 120) * 30;
+  } else if (durationSeconds >= 240 && durationSeconds <= 300) {
+    // 4m to 5m (ideal)
+    durationScore = 100;
+  } else {
+    // > 5m (drops 10 points per minute over)
+    durationScore = Math.max(40, 100 - ((durationSeconds - 300) / 60) * 10);
+  }
+
   // OVERALL SCORE
-  const overallScore = Math.round(
-    clarityScore * 0.35 + confidenceScore * 0.35 + paceScore * 0.3
-  );
+  const baseScore = clarityScore * 0.35 + confidenceScore * 0.35 + paceScore * 0.3;
+  // Blend duration score into the overall score (e.g. duration is 20% of the final score)
+  const overallScore = Math.round(baseScore * 0.8 + durationScore * 0.2);
 
   // SUGGESTIONS
   const suggestions: string[] = [];
@@ -210,7 +228,12 @@ export const analyzeSpeech = (
   if (!structure.hasBody) suggestions.push("Use transition words (first, second, next) to structure your speech body.");
   if (avgWordsPerSentence > 25) suggestions.push("Try breaking long sentences into shorter, punchier statements.");
   if (vocabularyDiversity < 0.4) suggestions.push("Vary your vocabulary to make your speech more engaging.");
-  if (wordCount < 50) suggestions.push("Try to speak for longer — a good practice speech is at least 2–3 minutes.");
+  
+  if (durationSeconds < 30) suggestions.push("Your speech was very short. Try to elaborate on your points to reach at least 2 minutes.");
+  else if (durationSeconds < 120) suggestions.push("Good start, but try to speak longer. The ideal length for this practice is 4–5 minutes.");
+  else if (durationSeconds > 300) suggestions.push("Your speech went over 5 minutes. Try to condense your main points for maximum impact.");
+  else if (durationSeconds >= 240 && durationSeconds <= 300) suggestions.push("Excellent timing! 4–5 minutes is the perfect speech duration.");
+
   if (overallScore >= 80) suggestions.push("Excellent speech! Challenge yourself with a more complex topic next time.");
 
   if (suggestions.length === 0) suggestions.push("Great work! Keep practicing to further refine your speaking skills.");

@@ -12,6 +12,7 @@ import { analyzeSpeech } from "@/lib/speechAnalysis";
 import { saveSpeechRecord } from "@/lib/localStorage";
 import { getRandomTopic } from "@/data/topics";
 import type { SpeechRecord } from "@/lib/localStorage";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const DEEPGRAM_WS_URL = "wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&interim_results=true&language=en-US";
 
@@ -205,54 +206,127 @@ const PracticePage = () => {
       return;
     }
 
-    // Consume credit in Supabase
-    if (session && profile) {
-      const newCredits = profile.credits - 1;
-      if (newCredits < 0) {
-        navigate("/upgrade");
-        return;
-      }
-      const { error: dbError } = await supabase
-        .from('users')
-        .update({ credits: newCredits })
-        .eq('id', session.user.id);
-
-      if (!dbError) {
-        await refreshProfile();
-      }
-    } else {
+    // Check credits before calling AI
+    if (!session || !profile) {
       navigate("/auth");
       return;
     }
-    setCreditConsumed(true);
+    
+    if (profile.credits <= 0) {
+      navigate("/upgrade");
+      return;
+    }
 
     try {
-      // Send audio to n8n webhook with a 45-second timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 45000);
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      if (!apiKey) throw new Error("Gemini API Key is missing. Please add VITE_GEMINI_API_KEY to your .env file.");
 
-      const formData = new FormData();
-      formData.append("Your_input_audio", audioBlob, "speech.ogg");
-      formData.append("topic", topic);
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-      const webhookUrl = import.meta.env.VITE_N8N_WEBHOOK_URL;
-      if (!webhookUrl) throw new Error("Webhook URL is missing in .env");
-
-      const response = await fetch(webhookUrl, {
-        method: "POST",
-        body: formData,
-        signal: controller.signal,
+      // Convert Blob to Base64
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve, reject) => {
+        reader.onloadend = () => {
+          const result = reader.result as string;
+          resolve(result.split(",")[1]);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(audioBlob!);
       });
 
-      clearTimeout(timeoutId);
+      const base64Audio = await base64Promise;
 
-      if (!response.ok) {
-        throw new Error(`Webhook error: ${response.statusText} (${response.status})`);
+      const promptText = `Analyze the following speech transcript and provide a detailed public speaking evaluation.
+
+INPUT:
+- Transcript: ${finalTranscript}
+
+OUTPUT FORMAT:
+
+1. CLEAN TRANSCRIPT
+- Provide a cleaned-up version of the transcript with corrected grammar (do not change meaning).
+
+2. SPEAKING ANALYSIS
+
+A. Clarity Score (0-10)
+- Evaluate pronunciation, sentence structure, and clarity of ideas.
+- Mention specific unclear or confusing phrases from the speech.
+
+B. Confidence Level (0-10)
+- Evaluate based on tone, hesitations, and delivery.
+- Highlight exact moments where confidence drops (e.g., repeated words, pauses).
+
+C. Filler Words Detection
+- List all filler words used (e.g., "um", "uh", "like", "you know").
+- Provide frequency count.
+- Show 2–3 exact sentences where filler words were used.
+
+D. Speaking Pace
+- Evaluate if too fast / too slow / balanced.
+- Support with reasoning (sentence length, pauses, flow).
+
+E. Emotional Tone
+- Describe tone (e.g., monotone, engaging, enthusiastic).
+- Identify specific lines where emotional tone is weak or strong.
+
+F. Vocal Energy
+- Evaluate energy level (low / moderate / high).
+- Mention patterns (e.g., starts strong but drops midway).
+
+3. PERSONALIZED FEEDBACK
+
+- Give specific, actionable suggestions based on the user's speech.
+- Each suggestion must:
+  1. Identify the issue
+  2. Show an example from the user's speech
+  3. Provide an improved version of that same sentence
+
+(Example format:)
+Issue: Overuse of filler words  
+Your sentence: "I think um this topic is like very important"  
+Improved: "I believe this topic is very important."
+
+Provide at least 5 such personalized improvements.
+
+4. IDEAL SPEECH (IMPORTANT)
+
+- Identify the topic of the user's speech. (Topic given: ${topic})
+- Generate a high-quality, well-structured ideal speech (~200 words) on the SAME topic.
+- The speech should demonstrate:
+  - Strong opening
+  - Clear structure
+  - Engaging tone
+  - Confident delivery style
+  - No filler words
+
+5. OVERALL SUMMARY
+
+- Give a short summary of strengths and key improvement areas.
+- Provide a final rating (0-10).`;
+
+      const audioPart = {
+        inlineData: {
+          data: base64Audio,
+          mimeType: audioBlob.type || 'audio/webm',
+        },
+      };
+
+      const result = await model.generateContent([promptText, audioPart]);
+      const responseText = result.response.text();
+
+      let aiFeedback = responseText;
+      let idealSpeech = "";
+
+      // Extract the ideal speech section
+      const idealSpeechMatch = responseText.match(/4\.?\s*IDEAL SPEECH(.*?)5\.?\s*OVERALL SUMMARY/is) || 
+                               responseText.match(/4\.?\s*IDEAL SPEECH(.*?)(?:$)/is);
+                               
+      if (idealSpeechMatch && idealSpeechMatch[1]) {
+        idealSpeech = idealSpeechMatch[1].trim();
+        // optionally remove the "(IMPORTANT)" or other heading remnants
+        idealSpeech = idealSpeech.replace(/^\s*\(\s*IMPORTANT\s*\)\s*/i, "");
       }
-
-      const webhookData: any = await response.json();
-      const aiFeedback = webhookData.analysis || "No AI feedback received.";
-      const idealSpeech = webhookData.ideal_speech || webhookData.idealSpeech || "";
 
       // Calculate local fallback stats
       const localAnalysis = analyzeSpeech(finalTranscript, duration);
@@ -276,6 +350,20 @@ const PracticePage = () => {
         idealSpeech: idealSpeech,
       };
 
+      // Consume credit in Supabase now that analysis succeeded
+      if (session && profile) {
+        const newCredits = profile.credits - 1;
+        const { error: dbError } = await supabase
+          .from('users')
+          .update({ credits: newCredits })
+          .eq('id', session.user.id);
+
+        if (!dbError) {
+          await refreshProfile();
+        }
+      }
+      setCreditConsumed(true);
+
       saveSpeechRecord(record);
       setLastAnalysis({ ...record, analysis: localAnalysis } as any);
 
@@ -287,9 +375,9 @@ const PracticePage = () => {
       setIsAnalyzing(false);
       
       if (err.name === 'AbortError') {
-        setError("AI Analysis timed out. n8n might be taking too long. Please try again.");
+        setError("AI Analysis timed out. Please try again.");
       } else {
-        setError("AI analysis failed. Please check your internet connection and n8n status.");
+        setError("AI analysis failed. Please check your internet connection and try again.");
       }
     }
   }, [transcript, interimTranscript, elapsed, creditConsumed, navigate, setLastAnalysis, topic, session, profile, refreshProfile]);

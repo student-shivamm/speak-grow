@@ -6,17 +6,19 @@ create table if not exists public.users (
   email text,
   full_name text,
   avatar_url text,
-  credits integer default 2,
+  credits integer default 5,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
 -- 2. Set up Row Level Security (RLS)
 alter table public.users enable row level security;
 
+drop policy if exists "Users can view their own profile." on public.users;
 create policy "Users can view their own profile."
   on public.users for select
   using ( auth.uid() = id );
 
+drop policy if exists "Users can update their own profile." on public.users;
 create policy "Users can update their own profile."
   on public.users for update
   using ( auth.uid() = id );
@@ -34,7 +36,7 @@ begin
     new.email,
     new.raw_user_meta_data->>'full_name',
     new.raw_user_meta_data->>'avatar_url',
-    2
+    5
   );
   return new;
 end;
