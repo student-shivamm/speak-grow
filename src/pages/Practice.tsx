@@ -295,12 +295,14 @@ Provide at least 5 such personalized improvements.
 
 - Identify the topic of the user's speech. (Topic given: ${topic})
 - Generate a high-quality, well-structured ideal speech (~200 words) on the SAME topic.
+- IMPORTANT: Use simple, everyday conversational language. Avoid complex words, fancy vocabulary, or overly formal phrasing. Write as if a confident student or young professional is speaking naturally to an audience.
 - The speech should demonstrate:
   - Strong opening
   - Clear structure
-  - Engaging tone
+  - Engaging but simple tone
   - Confident delivery style
   - No filler words
+  - Short sentences that are easy to follow
 
 5. OVERALL SUMMARY
 
