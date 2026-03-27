@@ -330,10 +330,24 @@ Provide at least 5 such personalized improvements.
         idealSpeech = idealSpeech.replace(/^\s*\(\s*IMPORTANT\s*\)\s*/i, "");
       }
 
+      let emotionalTone = "";
+      const emotionalToneMatch = responseText.match(/E\.?\s*Emotional Tone(.*?)F\.?\s*Vocal Energy/is);
+      if (emotionalToneMatch && emotionalToneMatch[1]) {
+        emotionalTone = emotionalToneMatch[1].trim();
+      }
+
+      let vocalEnergy = "";
+      const vocalEnergyMatch = responseText.match(/F\.?\s*Vocal Energy(.*?)3\.?\s*PERSONALIZED FEEDBACK/is);
+      if (vocalEnergyMatch && vocalEnergyMatch[1]) {
+        vocalEnergy = vocalEnergyMatch[1].trim();
+      }
+
       // Calculate local fallback stats
       const localAnalysis = analyzeSpeech(finalTranscript, duration);
       localAnalysis.aiAnalysis = aiFeedback;
       localAnalysis.idealSpeech = idealSpeech;
+      localAnalysis.emotionalTone = emotionalTone;
+      localAnalysis.vocalEnergy = vocalEnergy;
 
       const record: SpeechRecord = {
         id: `speech_${Date.now()}`,
@@ -350,6 +364,8 @@ Provide at least 5 such personalized improvements.
         topic,
         aiAnalysis: aiFeedback,
         idealSpeech: idealSpeech,
+        emotionalTone: emotionalTone,
+        vocalEnergy: vocalEnergy,
       };
 
       // Consume credit in Supabase now that analysis succeeded

@@ -31,6 +31,8 @@ export interface SpeechAnalysisResult {
   highlightedTranscript: string;
   aiAnalysis?: string;
   idealSpeech?: string;
+  emotionalTone?: string;
+  vocalEnergy?: string;
 }
 
 export interface StructureAnalysis {
@@ -283,4 +285,6 @@ const getEmptyResult = (): SpeechAnalysisResult => ({
   },
   suggestions: ["No speech detected. Please try again."],
   highlightedTranscript: "",
+  emotionalTone: "",
+  vocalEnergy: "",
 });

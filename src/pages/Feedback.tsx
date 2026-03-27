@@ -11,7 +11,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { ArrowLeft, TrendingUp, Target, Zap, MessageSquare, CheckCircle, XCircle, Lightbulb, BarChart2, Star, Sparkles } from "lucide-react";
+import { ArrowLeft, TrendingUp, Target, Zap, MessageSquare, CheckCircle, XCircle, Lightbulb, BarChart2, Star, Sparkles, Heart, Activity } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -192,6 +192,34 @@ const FeedbackPage = () => {
             )}
           </Card>
         </div>
+
+        {/* Emotional Tone & Vocal Energy */}
+        {(analysis.emotionalTone || analysis.vocalEnergy) && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            {analysis.emotionalTone && (
+              <Card className="p-5 shadow-card bg-error/5 border-error/10">
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2 text-error">
+                  <Heart className="h-4 w-4" />
+                  Emotional Tone
+                </h3>
+                <div className="text-sm text-foreground/90 leading-relaxed prose prose-sm max-w-none">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{analysis.emotionalTone}</ReactMarkdown>
+                </div>
+              </Card>
+            )}
+            {analysis.vocalEnergy && (
+              <Card className="p-5 shadow-card bg-accent/5 border-accent/10">
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2 text-accent">
+                  <Activity className="h-4 w-4" />
+                  Vocal Energy
+                </h3>
+                <div className="text-sm text-foreground/90 leading-relaxed prose prose-sm max-w-none">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{analysis.vocalEnergy}</ReactMarkdown>
+                </div>
+              </Card>
+            )}
+          </div>
+        )}
 
         {/* Speech Structure */}
         <Card className="p-5 shadow-card mb-6">

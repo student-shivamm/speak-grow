@@ -63,6 +63,8 @@ export interface SpeechRecord {
   topic?: string;
   aiAnalysis?: string;
   idealSpeech?: string;
+  emotionalTone?: string;
+  vocalEnergy?: string;
 }
 
 export const saveSpeechRecord = (record: SpeechRecord): void => {
