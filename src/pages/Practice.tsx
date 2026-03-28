@@ -36,10 +36,15 @@ const PracticePage = () => {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number>(0);
   const transcriptRef = useRef("");
+  const interimTranscriptRef = useRef("");
 
   useEffect(() => {
     transcriptRef.current = transcript;
   }, [transcript]);
+
+  useEffect(() => {
+    interimTranscriptRef.current = interimTranscript;
+  }, [interimTranscript]);
 
   useEffect(() => {
     // Check if browser supports required APIs
@@ -161,8 +166,16 @@ const PracticePage = () => {
 
   const stopRecording = useCallback(async () => {
     setIsAnalyzing(true);
+    setError(null);
+
+    // Capture refs BEFORE any state changes to avoid stale closures
+    const capturedTranscript = transcriptRef.current;
+    const capturedInterim = interimTranscriptRef.current;
+
     if (socketRef.current) {
-      socketRef.current.send(JSON.stringify({ type: 'CloseStream' }));
+      try {
+        socketRef.current.send(JSON.stringify({ type: 'CloseStream' }));
+      } catch(e) { /* socket may already be closed */ }
       socketRef.current.close();
       socketRef.current = null;
     }
@@ -171,7 +184,9 @@ const PracticePage = () => {
     setInterimTranscript("");
 
     const duration = Math.floor((Date.now() - startTimeRef.current) / 1000);
-    const finalTranscript = (transcriptRef.current + " " + interimTranscript).trim() || "No transcript recorded.";
+    const finalTranscript = (capturedTranscript + " " + capturedInterim).trim() || "No transcript recorded.";
+
+    console.log("[SpeakGrow] Duration:", duration, "s | Transcript length:", finalTranscript.length, "chars");
 
     const localAnalysis = analyzeSpeech(finalTranscript, duration);
 
@@ -214,11 +229,13 @@ const PracticePage = () => {
 
     // Check credits before calling AI
     if (!session || !profile) {
+      setIsAnalyzing(false);
       navigate("/auth");
       return;
     }
     
     if (profile.credits <= 0) {
+      setIsAnalyzing(false);
       navigate("/upgrade");
       return;
     }
@@ -278,9 +295,16 @@ Provide the response strictly in this exact order format:
       });
 
       // Convert audio blob to base64 for Gemini multimodal input
-      const audioBase64 = await new Promise<string>((resolve) => {
+      console.log("[SpeakGrow] Audio blob size:", (audioBlob!.size / 1024).toFixed(1), "KB");
+      const audioBase64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
-        reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+        reader.onloadend = () => {
+          const result = reader.result as string;
+          const base64 = result.split(',')[1];
+          if (!base64) reject(new Error("Failed to encode audio."));
+          else resolve(base64);
+        };
+        reader.onerror = () => reject(new Error("Failed to read audio file."));
         reader.readAsDataURL(audioBlob!);
       });
 
@@ -291,45 +315,58 @@ Provide the response strictly in this exact order format:
         },
       };
 
+      // --- GROQ: Ideal Speech (fire-and-forget, non-blocking) ---
       const grokApiKey = import.meta.env.VITE_GROK_API_KEY;
       const groqPrompt = `Topic: "${topic}"
 User Blueprint/Transcript: "${finalTranscript}"
 
 Task: You are an expert public speaking coach. Generate a high-quality, engaging ideal speech (~250-300 words). It should be INSPIRED by the user's actual transcript, retaining their general ideas but making it significantly better with a strong and creative opening, clear deep structure, engaging professional tone, and zero filler words. ONLY output the transcript of the speech, no introductions, greetings, quotes, or formatting.`;
-      const groqPromise = grokApiKey ? fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${grokApiKey}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "llama3-8b-8192",
-          messages: [{ role: "user", content: groqPrompt }],
-          temperature: 0.7,
-          max_tokens: 600
-        })
-      }).then(res => res.ok ? res.json() : null)
-        .catch(err => {
-          console.warn("Groq Ideal Speech failed:", err);
-          return null;
-        }) : Promise.resolve(null);
 
-      // Ensure the UI never hangs forever by enforcing a strict 25-second timeout limit
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Request timed out after 25 seconds. Please try again.")), 25000)
+      // Groq has its own independent 10-second timeout so it can never block Gemini
+      const groqWithTimeout = (promise: Promise<any>) => {
+        const groqTimeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000));
+        return Promise.race([promise, groqTimeout]);
+      };
+
+      const groqPromise = grokApiKey ? groqWithTimeout(
+        fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${grokApiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: "llama3-8b-8192",
+            messages: [{ role: "user", content: groqPrompt }],
+            temperature: 0.7,
+            max_tokens: 600
+          })
+        }).then(res => res.ok ? res.json() : null)
+          .catch(err => {
+            console.warn("[SpeakGrow] Groq Ideal Speech failed:", err);
+            return null;
+          })
+      ) : Promise.resolve(null);
+
+      // --- GEMINI: Audio Analysis (the critical path) ---
+      // Use a generous 45-second timeout since large audio uploads can take time
+      console.log("[SpeakGrow] Sending audio to Gemini 2.5 Flash...");
+      const geminiPromise = model.generateContent([promptText, audioPart]);
+
+      const timeoutPromise = new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error("AI analysis timed out. This can happen with longer recordings. Please try again.")), 45000)
       );
 
-      // Fire both requests concurrently (Gemini for audio, Groq for long ideal text)
-      // We wrap the Gemini call in its own catch so it doesn't fail the whole block
-      const [analysisResult, groqResult] = await Promise.race([
-        Promise.all([
-          model.generateContent([promptText, audioPart]).catch(e => { throw e; }),
-          groqPromise
-        ]),
-        timeoutPromise
-      ]) as [any, any];
+      // Gemini and Groq run fully independently
+      // If Groq fails or times out, we still get Gemini results
+      // If Gemini times out, we show an error
+      const [analysisResult, groqResult] = await Promise.all([
+        Promise.race([geminiPromise, timeoutPromise]),
+        groqPromise  // Already has its own 10s timeout, will resolve to null on failure
+      ]);
       
-      let responseText = analysisResult.response.text();
+      console.log("[SpeakGrow] Gemini response received!");
+      let responseText = (analysisResult as any).response.text();
 
       // Extract XML SCORES cleanly using JSON.parse
       const scoresMatch = responseText.match(/<SCORES>([\s\S]*?)<\/SCORES>/i);
@@ -406,16 +443,19 @@ Task: You are an expert public speaking coach. Generate a high-quality, engaging
       setIsAnalyzing(false);
       navigate("/feedback", { state: { analysis: localAnalysis, record } });
     } catch (err: any) {
-      console.error("AI Analysis Failed:", err);
+      console.error("[SpeakGrow] AI Analysis Failed:", err);
       setIsAnalyzing(false);
       
-      if (err.name === 'AbortError') {
-        setError("AI Analysis timed out. Please try again.");
+      const msg = err?.message || "";
+      if (msg.includes("timed out")) {
+        setError("AI analysis timed out — this can happen with longer recordings or slow connections. Please try again.");
+      } else if (msg.includes("API_KEY")) {
+        setError(msg);
       } else {
-        setError("AI analysis failed: " + (err.message || "Please check your internet connection and try again."));
+        setError("AI analysis failed: " + (msg || "Please check your internet connection and try again."));
       }
     }
-  }, [transcript, interimTranscript, elapsed, creditConsumed, navigate, setLastAnalysis, topic, session, profile, refreshProfile]);
+  }, [creditConsumed, navigate, setLastAnalysis, topic, session, profile, refreshProfile]);
 
   return (
     <div className="min-h-screen bg-background py-8">
@@ -530,9 +570,20 @@ Task: You are an expert public speaking coach. Generate a high-quality, engaging
 
             {/* Wait hint while analyzing */}
             {isAnalyzing && (
-              <p className="text-xs text-muted-foreground/70 italic text-center max-w-xs">
-                ⏳ This may take 15–30 seconds. Please don't close the page.
-              </p>
+              <div className="flex flex-col items-center gap-3">
+                <p className="text-xs text-muted-foreground/70 italic text-center max-w-xs">
+                  ⏳ Analyzing your speech with AI... This typically takes 15–30 seconds.
+                </p>
+                <button
+                  onClick={() => {
+                    setIsAnalyzing(false);
+                    setError("Analysis was cancelled. You can try recording again.");
+                  }}
+                  className="text-xs text-muted-foreground hover:text-error underline transition-colors"
+                >
+                  Cancel analysis
+                </button>
+              </div>
             )}
 
             {/* Credits display */}
