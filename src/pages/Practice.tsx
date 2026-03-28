@@ -286,21 +286,36 @@ Provide the response strictly in this exact order format:
         },
       };
 
-      const idealSpeechPrompt = `Topic: "${topic}"
+      const grokApiKey = import.meta.env.VITE_GROK_API_KEY;
+      const groqPrompt = `Topic: "${topic}"
 User Blueprint/Transcript: "${finalTranscript}"
 
-Task: You are an expert public speaking coach. Generate a high-quality, engaging ideal speech (~150-180 words maximum). It should be INSPIRED by the user's actual transcript, retaining their general ideas but making it significantly better with a strong opening, clear structure, engaging tone, and zero filler words. ONLY output the transcript of the speech, no introductions, greetings, quotes, or formatting.`;
+Task: You are an expert public speaking coach. Generate a high-quality, engaging ideal speech (~250-300 words). It should be INSPIRED by the user's actual transcript, retaining their general ideas but making it significantly better with a strong and creative opening, clear deep structure, engaging professional tone, and zero filler words. ONLY output the transcript of the speech, no introductions, greetings, quotes, or formatting.`;
+
+      const groqPromise = grokApiKey ? fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${grokApiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "llama3-8b-8192",
+          messages: [{ role: "user", content: groqPrompt }],
+          temperature: 0.7,
+          max_tokens: 600
+        })
+      }).then(res => res.ok ? res.json() : null).catch(() => null) : Promise.resolve(null);
 
       // Ensure the UI never hangs forever by enforcing a strict 35-second timeout limit
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error("Request timed out after 35 seconds. Please try again.")), 35000)
       );
 
-      // Fire both requests concurrently using the native Gemini model
-      const [analysisResult, idealSpeechResult] = await Promise.race([
+      // Fire both requests concurrently (Gemini for audio, Groq for long ideal text)
+      const [analysisResult, groqResult] = await Promise.race([
         Promise.all([
           model.generateContent([promptText, audioPart]),
-          model.generateContent(idealSpeechPrompt)
+          groqPromise
         ]),
         timeoutPromise
       ]) as [any, any];
@@ -326,7 +341,7 @@ Task: You are an expert public speaking coach. Generate a high-quality, engaging
       }
 
       let aiFeedback = responseText;
-      let idealSpeech = idealSpeechResult?.response?.text()?.trim() || "";
+      let idealSpeech = groqResult?.choices?.[0]?.message?.content?.trim() || "";
 
       // Handle combo emotional analysis block
       let emotionalTone = "";
