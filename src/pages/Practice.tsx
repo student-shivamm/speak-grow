@@ -322,9 +322,9 @@ User Blueprint/Transcript: "${finalTranscript}"
 
 Task: You are an expert public speaking coach. Generate a high-quality, engaging ideal speech (~250-300 words). It should be INSPIRED by the user's actual transcript, retaining their general ideas but making it significantly better with a strong and creative opening, clear deep structure, engaging professional tone, and zero filler words. ONLY output the transcript of the speech, no introductions, greetings, quotes, or formatting.`;
 
-      // Groq has its own independent 10-second timeout so it can never block Gemini
+      // Groq has its own independent 20-second timeout so it can never block Gemini
       const groqWithTimeout = (promise: Promise<any>) => {
-        const groqTimeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000));
+        const groqTimeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 20000));
         return Promise.race([promise, groqTimeout]);
       };
 
@@ -387,7 +387,27 @@ Task: You are an expert public speaking coach. Generate a high-quality, engaging
       }
 
       let aiFeedback = responseText;
+      
+      // Extract ideal speech from Groq result
+      console.log("[SpeakGrow] Groq result:", groqResult ? "received" : "null/failed");
       let idealSpeech = groqResult?.choices?.[0]?.message?.content?.trim() || "";
+      
+      // If Groq failed, generate ideal speech via Gemini as fallback
+      if (!idealSpeech) {
+        console.log("[SpeakGrow] Groq returned empty. Generating ideal speech via Gemini fallback...");
+        try {
+          const fallbackResult = await Promise.race([
+            model.generateContent(`Topic: "${topic}"\nUser transcript: "${finalTranscript}"\n\nGenerate a high-quality, engaging ideal speech (~250-300 words) INSPIRED by the user's transcript. Retain their general ideas but make it significantly better with a strong opening, clear structure, engaging tone, and no filler words. ONLY output the speech text, nothing else.`),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 15000))
+          ]);
+          if (fallbackResult && (fallbackResult as any).response) {
+            idealSpeech = (fallbackResult as any).response.text().trim();
+            console.log("[SpeakGrow] Gemini fallback ideal speech generated successfully!");
+          }
+        } catch (e) {
+          console.warn("[SpeakGrow] Gemini fallback for ideal speech also failed:", e);
+        }
+      }
 
       // Handle combo emotional analysis block
       let emotionalTone = "";
