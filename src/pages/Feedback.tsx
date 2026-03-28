@@ -1,7 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useLocation, useNavigate, Link } from "react-router-dom";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { motion } from "framer-motion";
 import {
   Dialog,
@@ -45,6 +46,82 @@ const ScoreCard = ({ label, score, color, icon: Icon }: { label: string; score: 
     </div>
   </motion.div>
 );
+
+interface IdealSpeechButtonProps {
+  analysis: SpeechAnalysisResult;
+  record: SpeechRecord;
+  boldHeadings: (text: string) => string;
+}
+
+const IdealSpeechButton = ({ analysis, record, boldHeadings }: IdealSpeechButtonProps) => {
+  const [speech, setSpeech] = useState(analysis.idealSpeech || "");
+  const [loading, setLoading] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const generateSpeech = async () => {
+    if (speech) return; // Already have it
+    setLoading(true);
+    try {
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      if (!apiKey) {
+        setSpeech("Unable to generate ideal speech: API key missing.");
+        return;
+      }
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", generationConfig: { temperature: 0.7 } });
+      const result = await model.generateContent(
+        `Topic: "${record.topic}"\nUser transcript: "${record.transcript}"\n\nGenerate a high-quality, engaging ideal speech (~250-300 words) INSPIRED by the user's transcript. Retain their general ideas but make it significantly better with a strong opening, clear structure, engaging tone, and no filler words. ONLY output the speech text, nothing else.`
+      );
+      setSpeech(result.response.text().trim());
+    } catch (e) {
+      console.error("[SpeakGrow] On-demand ideal speech generation failed:", e);
+      setSpeech("Failed to generate ideal speech. Please try again later.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOpen = (open: boolean) => {
+    setDialogOpen(open);
+    if (open && !speech) {
+      generateSpeech();
+    }
+  };
+
+  return (
+    <div className="flex justify-center mb-6 mt-4">
+      <Dialog open={dialogOpen} onOpenChange={handleOpen}>
+        <DialogTrigger asChild>
+          <Button size="lg" className="w-full sm:w-auto shadow-brand gradient-brand gap-2 group font-semibold px-8 rounded-full">
+            <Sparkles className="h-5 w-5 transition-transform group-hover:rotate-12" />
+            View Ideal Speech
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-primary">
+              <Star className="h-5 w-5 text-warning fill-warning/20" />
+              Ideal Speech: {record.topic || "This Topic"}
+            </DialogTitle>
+            <DialogDescription>
+              A professionally crafted version of how this speech could be delivered.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 prose prose-sm dark:prose-invert max-w-none text-foreground leading-relaxed">
+            {loading ? (
+              <div className="flex flex-col items-center gap-3 py-8">
+                <div className="h-8 w-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                <p className="text-sm text-muted-foreground">Generating your ideal speech...</p>
+              </div>
+            ) : (
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{boldHeadings(speech)}</ReactMarkdown>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};
 
 const FeedbackPage = () => {
   const location = useLocation();
@@ -216,33 +293,8 @@ const FeedbackPage = () => {
           </div>
         </Card>
 
-        {/* View Ideal Speech Button Centered Above Insights */}
-        {analysis.idealSpeech && (
-          <div className="flex justify-center mb-6 mt-4">
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button size="lg" className="w-full sm:w-auto shadow-brand gradient-brand gap-2 group font-semibold px-8 rounded-full">
-                  <Sparkles className="h-5 w-5 transition-transform group-hover:rotate-12" />
-                  View Ideal Speech
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2 text-primary">
-                    <Star className="h-5 w-5 text-warning fill-warning/20" />
-                    Ideal Speech: {record.topic || "This Topic"}
-                  </DialogTitle>
-                  <DialogDescription>
-                    A professionally crafted version of how this speech could be delivered.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="mt-4 prose prose-sm dark:prose-invert max-w-none text-foreground leading-relaxed">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{boldHeadings(analysis.idealSpeech || "")}</ReactMarkdown>
-                </div>
-              </DialogContent>
-            </Dialog>
-          </div>
-        )}
+        {/* View Ideal Speech Button - Always Visible */}
+        <IdealSpeechButton analysis={analysis} record={record} boldHeadings={boldHeadings} />
 
         {/* AI Insights & Suggestions */}
         <Card className="p-6 shadow-card mb-6 bg-gradient-to-br from-card to-muted/30 border-primary/20">
