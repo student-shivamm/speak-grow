@@ -6,7 +6,7 @@ create table if not exists public.users (
   email text,
   full_name text,
   avatar_url text,
-  credits integer default 5,
+  credits integer default 10,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
@@ -36,7 +36,7 @@ begin
     new.email,
     new.raw_user_meta_data->>'full_name',
     new.raw_user_meta_data->>'avatar_url',
-    5
+    10
   );
   return new;
 end;

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Mic, MicOff, Square, Shuffle, Timer, AlertCircle, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -216,124 +217,126 @@ const PracticePage = () => {
     }
 
     try {
-      const apiKey = import.meta.env.VITE_GROK_API_KEY;
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       if (!apiKey) {
-        throw new Error("Your VITE_GROK_API_KEY environment variable is missing! Please add it in your .env file.");
+        throw new Error("Your VITE_GEMINI_API_KEY environment variable is missing! Please add it in your .env file.");
       }
 
-      const promptText = `Analyze the following speech transcript and provide a detailed public speaking evaluation for the topic: "${topic}".
+      const localAnalysis = analyzeSpeech(finalTranscript, duration);
+
+      const promptText = `Analyze the following speech transcript AND the provided audio recording. Provide a detailed public speaking evaluation for the topic: "${topic}". Pay close attention to the raw AUDIO to evaluate Pitch, Vocal Energy, Emotions, tone, and hesitations directly from the sound.
+
+IMPORTANT SCORING RULES:
+1. Evaluate Clarity, Confidence, Pace, and Overall Score heavily out of 100 accurately based on the actual audio performance.
+2. DURATION PENALTY: The IDEAL speech duration is 2-4 minutes. If the speech is severely under time (e.g., less than 1 minute), aggressively penalize the Overall Score (rarely above 50-60 if it's just a few seconds). If it is slightly short, apply a minor penalty.
 
 INPUT:
 - Transcript: ${finalTranscript}
+- Speech Duration: ${Math.floor(duration / 60)} minutes and ${Math.round(duration % 60)} seconds.
+- Actual Speaking Pace: ${localAnalysis.wpm} words per minute (WPM). Note: Ideal pace is 100-160 WPM.
 
 OUTPUT FORMAT:
-1. CLEAN TRANSCRIPT
-- Provide a cleaned-up version of the transcript with corrected grammar (do not change meaning).
-2. SPEAKING ANALYSIS
-A. Clarity Score (0-10)
-- Evaluate pronunciation, sentence structure, and clarity of ideas.
-- Mention specific unclear or confusing phrases from the speech.
-B. Confidence Level (0-10)
-- Evaluate based on tone, hesitations, and delivery.
-- Highlight exact moments where confidence drops (e.g., repeated words, pauses).
-C. Filler Words Detection
-- List all filler words used (e.g., "um", "uh", "like", "you know").
+Provide the response strictly in this exact order format:
+
+<SCORES>
+{
+  "overallScore": 85,
+  "clarityScore": 80,
+  "confidenceScore": 85,
+  "paceScore": 90
+}
+</SCORES>
+
+1. EMOTIONAL ANALYSIS & VOCAL TONE
+- Describe the emotional tone (e.g., monotone, engaging) and evaluate the energy level (low/high).
+- Mention patterns or specific lines where emotion/energy was weak or strong.
+
+2. FILLER WORDS DETECTION
+- List all filler words used (e.g., "um", "uh", "like").
 - Provide frequency count.
 - Show 2–3 exact sentences where filler words were used.
-D. Speaking Pace
-- Evaluate if too fast / too slow / balanced.
-- Support with reasoning (sentence length, pauses, flow).
-E. Emotional Tone
-- Describe tone (e.g., monotone, engaging, enthusiastic).
-- Identify specific lines where emotional tone is weak or strong.
-F. Vocal Energy
-- Evaluate energy level (low / moderate / high).
-- Mention patterns (e.g., starts strong but drops midway).
-3. PERSONALIZED FEEDBACK
-- Give specific, actionable suggestions based on the user's speech.
-- Each suggestion must:
-1. Identify the issue
-2. Show an example from the user's speech
-3. Provide an improved version of that same sentence
-(Example format:)
-Issue: Overuse of filler words
-Your sentence: "I think um this topic is like very important"
-Improved: "I believe this topic is very important."
-Provide at least 5 such personalized improvements.
-4. IDEAL SPEECH (IMPORTANT)
-- Identify the topic of the user's speech.
-- Generate a high-quality, well-structured ideal speech in simple language (~200 words) on the SAME topic.
-- The speech should demonstrate:
-- Strong opening
-- Clear structure
-- Engaging tone
-- Confident delivery style
-- No filler words
-5. OVERALL SUMMARY
-- Give a short summary of strengths and key improvement areas.
-- Provide a final rating (0-10).`;
 
-      let result;
-      let retries = 3;
-      while (retries > 0) {
-        try {
-          const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${apiKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: "llama3-70b-8192",
-              messages: [{ role: "user", content: promptText }],
-              temperature: 0.7,
-            }),
-          });
-          
-          if (!response.ok) {
-            const errBody = await response.text();
-            throw new Error(`Groq API error: ${response.status} ${errBody}`);
-          }
-          
-          result = await response.json();
-          break; // Success
-        } catch (e: any) {
-          retries--;
-          console.warn(`Groq API failed, retrying... (${retries} retries left)`, e);
-          if (retries === 0) throw e;
-          // Exponential backoff to handle free tier 429 quota limits gracefully
-          await new Promise((r) => setTimeout(r, (4 - retries) * 3000));
+3. PERSONALIZED FEEDBACK
+- Give exact, actionable suggestions based on the user's speech.
+- Each suggestion must identify the issue, quote the user, and provide a single improved sentence.
+- Provide exactly 2 or 3 personalized improvements.
+
+4. OVERALL SUMMARY
+- Give a short summary of strengths and key improvement areas.`;
+
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ 
+        model: "gemini-2.5-flash",
+        generationConfig: {
+          temperature: 0.7,
         }
+      });
+
+      // Convert audio blob to base64 for Gemini multimodal input
+      const audioBase64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+        reader.readAsDataURL(audioBlob!);
+      });
+
+      const audioPart = {
+        inlineData: {
+          data: audioBase64,
+          mimeType: audioBlob!.type || 'audio/webm',
+        },
+      };
+
+      const idealSpeechPrompt = `Topic: "${topic}"
+User Blueprint/Transcript: "${finalTranscript}"
+
+Task: You are an expert public speaking coach. Generate a high-quality, engaging ideal speech (~150-180 words maximum). It should be INSPIRED by the user's actual transcript, retaining their general ideas but making it significantly better with a strong opening, clear structure, engaging tone, and zero filler words. ONLY output the transcript of the speech, no introductions, greetings, quotes, or formatting.`;
+
+      // Ensure the UI never hangs forever by enforcing a strict 35-second timeout limit
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Request timed out after 35 seconds. Please try again.")), 35000)
+      );
+
+      // Fire both requests concurrently using the native Gemini model
+      const [analysisResult, idealSpeechResult] = await Promise.race([
+        Promise.all([
+          model.generateContent([promptText, audioPart]),
+          model.generateContent(idealSpeechPrompt)
+        ]),
+        timeoutPromise
+      ]) as [any, any];
+      
+      let responseText = analysisResult.response.text();
+
+      // Extract XML SCORES cleanly using JSON.parse
+      const scoresMatch = responseText.match(/<SCORES>([\s\S]*?)<\/SCORES>/i);
+      if (scoresMatch && scoresMatch[1]) {
+        try {
+          const scoresJson = JSON.parse(scoresMatch[1].replace(/```json|```/gi, "").trim());
+          if (scoresJson.overallScore !== undefined) {
+             localAnalysis.overallScore = scoresJson.overallScore;
+             localAnalysis.clarityScore = scoresJson.clarityScore;
+             localAnalysis.confidenceScore = scoresJson.confidenceScore;
+             localAnalysis.paceScore = scoresJson.paceScore;
+          }
+        } catch (e) {
+          console.error("Failed to parse scores JSON", e);
+        }
+        // Remove the scores block entirely so no raw JSON surfaces in the UI
+        responseText = responseText.replace(/<SCORES>[\s\S]*?<\/SCORES>/i, "").trim();
       }
-      const responseText = result.choices[0].message.content;
 
       let aiFeedback = responseText;
-      let idealSpeech = "";
+      let idealSpeech = idealSpeechResult?.response?.text()?.trim() || "";
 
-      // Extract the ideal speech section
-      const idealSpeechMatch = responseText.match(/4\.?\s*IDEAL SPEECH(.*?)5\.?\s*OVERALL SUMMARY/is) || 
-                               responseText.match(/4\.?\s*IDEAL SPEECH(.*?)(?:$)/is);
-                               
-      if (idealSpeechMatch && idealSpeechMatch[1]) {
-        idealSpeech = idealSpeechMatch[1].trim();
-        // optionally remove the "(IMPORTANT)" or other heading remnants
-        idealSpeech = idealSpeech.replace(/^\s*\(\s*IMPORTANT\s*\)\s*/i, "");
-      }
-
+      // Handle combo emotional analysis block
       let emotionalTone = "";
-      const emotionalToneMatch = responseText.match(/E\.?\s*Emotional Tone(.*?)F\.?\s*Vocal Energy/is);
-      if (emotionalToneMatch && emotionalToneMatch[1]) {
-        emotionalTone = emotionalToneMatch[1].trim();
+      let vocalEnergy = ""; // Empty so the separate UI section remains hidden
+      const emotionalComboMatch = aiFeedback.match(/1\.?\s*EMOTIONAL ANALYSIS(.*?)2\.?\s*FILLER/is);
+      if (emotionalComboMatch && emotionalComboMatch[1]) {
+        emotionalTone = emotionalComboMatch[1].trim();
       }
 
-      let vocalEnergy = "";
-      const vocalEnergyMatch = responseText.match(/F\.?\s*Vocal Energy(.*?)3\.?\s*PERSONALIZED FEEDBACK/is);
-      if (vocalEnergyMatch && vocalEnergyMatch[1]) {
-        vocalEnergy = vocalEnergyMatch[1].trim();
-      }
-
-      // Calculate local fallback stats
-      const localAnalysis = analyzeSpeech(finalTranscript, duration);
+      // Update local analysis with AI results
       localAnalysis.aiAnalysis = aiFeedback;
       localAnalysis.idealSpeech = idealSpeech;
       localAnalysis.emotionalTone = emotionalTone;

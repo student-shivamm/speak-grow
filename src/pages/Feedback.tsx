@@ -145,8 +145,8 @@ const FeedbackPage = () => {
           <ScoreCard label="Pace Score" score={analysis.paceScore} color={paceColor} icon={Zap} />
         </div>
 
-        {/* Pace & Filler Row */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        {/* Pace Row */}
+        <div className="mb-6">
           {/* Pace */}
           <Card className="p-5 shadow-card">
             <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
@@ -168,28 +168,6 @@ const FeedbackPage = () => {
             <div className="mt-3 text-xs text-muted-foreground">
               Ideal pace: 100–160 WPM for engaging delivery
             </div>
-          </Card>
-
-          {/* Filler Words */}
-          <Card className="p-5 shadow-card">
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <MessageSquare className="h-4 w-4 text-warning" />
-              Filler Words
-            </h3>
-            {analysis.fillerWords.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {analysis.fillerWords.slice(0, 8).map((fw) => (
-                  <Badge key={fw.word} variant="outline" className="text-xs bg-warning/10 border-warning/20 text-warning">
-                    "{fw.word}"
-                  </Badge>
-                ))}
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 text-success text-sm">
-                <CheckCircle className="h-4 w-4" />
-                No filler words detected! Great job.
-              </div>
-            )}
           </Card>
         </div>
 
@@ -238,19 +216,14 @@ const FeedbackPage = () => {
           </div>
         </Card>
 
-        {/* AI Insights & Suggestions */}
-        <Card className="p-6 shadow-card mb-6 bg-gradient-to-br from-card to-muted/30 border-primary/20">
-          <h3 className="text-base font-display font-bold mb-4 flex items-center gap-2 text-primary">
-            <Lightbulb className="h-5 w-5 text-warning fill-warning/20" />
-            AI Speech Insights
-          </h3>
-
-          {analysis.idealSpeech && (
+        {/* View Ideal Speech Button Centered Above Insights */}
+        {analysis.idealSpeech && (
+          <div className="flex justify-center mb-6 mt-4">
             <Dialog>
               <DialogTrigger asChild>
-                <Button variant="outline" className="w-full mb-6 border-accent/30 bg-accent/5 hover:bg-accent/10 text-accent gap-2 group">
-                  <Sparkles className="h-4 w-4 transition-transform group-hover:rotate-12" />
-                  View Model Speech (200 Words)
+                <Button size="lg" className="w-full sm:w-auto shadow-brand gradient-brand gap-2 group font-semibold px-8 rounded-full">
+                  <Sparkles className="h-5 w-5 transition-transform group-hover:rotate-12" />
+                  View Ideal Speech
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
@@ -268,7 +241,15 @@ const FeedbackPage = () => {
                 </div>
               </DialogContent>
             </Dialog>
-          )}
+          </div>
+        )}
+
+        {/* AI Insights & Suggestions */}
+        <Card className="p-6 shadow-card mb-6 bg-gradient-to-br from-card to-muted/30 border-primary/20">
+          <h3 className="text-xl font-display font-bold mb-5 flex items-center justify-center gap-2 text-primary text-center">
+            <Lightbulb className="h-6 w-6 text-warning fill-warning/20" />
+            AI Speech Insights
+          </h3>
 
           {analysis.aiAnalysis ? (
             <div className="text-sm text-foreground prose prose-sm dark:prose-invert max-w-none prose-p:my-1.5 prose-p:leading-relaxed prose-headings:font-display prose-headings:font-bold prose-headings:text-primary prose-headings:mt-3 prose-headings:mb-1 prose-a:text-accent prose-li:marker:text-primary prose-hr:my-3">
