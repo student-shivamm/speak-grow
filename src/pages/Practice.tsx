@@ -12,8 +12,6 @@ import { analyzeSpeech } from "@/lib/speechAnalysis";
 import { saveSpeechRecord } from "@/lib/localStorage";
 import { getRandomTopic } from "@/data/topics";
 import type { SpeechRecord } from "@/lib/localStorage";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
 const DEEPGRAM_WS_URL = "wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&interim_results=true&language=en-US";
 
 
@@ -218,119 +216,96 @@ const PracticePage = () => {
     }
 
     try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const apiKey = import.meta.env.VITE_GROK_API_KEY;
       if (!apiKey) {
-        throw new Error("Your VITE_GEMINI_API_KEY environment variable is missing in Vercel! Please add it in the Vercel Dashboard Settings -> Environment Variables, and redeploy.");
+        throw new Error("Your VITE_GROK_API_KEY environment variable is missing! Please add it in your .env file.");
       }
 
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
-      // Convert Blob to Base64
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve, reject) => {
-        reader.onloadend = () => {
-          const result = reader.result as string;
-          resolve(result.split(",")[1]);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(audioBlob!);
-      });
-
-      const base64Audio = await base64Promise;
-
-      const promptText = `Analyze the following speech transcript and provide a detailed public speaking evaluation.
+      const promptText = `Analyze the following speech transcript and provide a detailed public speaking evaluation for the topic: "${topic}".
 
 INPUT:
 - Transcript: ${finalTranscript}
 
 OUTPUT FORMAT:
-
 1. CLEAN TRANSCRIPT
 - Provide a cleaned-up version of the transcript with corrected grammar (do not change meaning).
-
 2. SPEAKING ANALYSIS
-
 A. Clarity Score (0-10)
 - Evaluate pronunciation, sentence structure, and clarity of ideas.
 - Mention specific unclear or confusing phrases from the speech.
-
 B. Confidence Level (0-10)
 - Evaluate based on tone, hesitations, and delivery.
 - Highlight exact moments where confidence drops (e.g., repeated words, pauses).
-
 C. Filler Words Detection
 - List all filler words used (e.g., "um", "uh", "like", "you know").
 - Provide frequency count.
 - Show 2–3 exact sentences where filler words were used.
-
 D. Speaking Pace
 - Evaluate if too fast / too slow / balanced.
 - Support with reasoning (sentence length, pauses, flow).
-
 E. Emotional Tone
 - Describe tone (e.g., monotone, engaging, enthusiastic).
 - Identify specific lines where emotional tone is weak or strong.
-
 F. Vocal Energy
 - Evaluate energy level (low / moderate / high).
 - Mention patterns (e.g., starts strong but drops midway).
-
 3. PERSONALIZED FEEDBACK
-
 - Give specific, actionable suggestions based on the user's speech.
 - Each suggestion must:
-  1. Identify the issue
-  2. Show an example from the user's speech
-  3. Provide an improved version of that same sentence
-
+1. Identify the issue
+2. Show an example from the user's speech
+3. Provide an improved version of that same sentence
 (Example format:)
-Issue: Overuse of filler words  
-Your sentence: "I think um this topic is like very important"  
+Issue: Overuse of filler words
+Your sentence: "I think um this topic is like very important"
 Improved: "I believe this topic is very important."
-
 Provide at least 5 such personalized improvements.
-
 4. IDEAL SPEECH (IMPORTANT)
-
-- Identify the topic of the user's speech. (Topic given: ${topic})
-- Generate a high-quality, well-structured ideal speech (~200 words) on the SAME topic.
-- IMPORTANT: Use simple, everyday conversational language. Avoid complex words, fancy vocabulary, or overly formal phrasing. Write as if a confident student or young professional is speaking naturally to an audience.
+- Identify the topic of the user's speech.
+- Generate a high-quality, well-structured ideal speech in simple language (~200 words) on the SAME topic.
 - The speech should demonstrate:
-  - Strong opening
-  - Clear structure
-  - Engaging but simple tone
-  - Confident delivery style
-  - No filler words
-  - Short sentences that are easy to follow
-
+- Strong opening
+- Clear structure
+- Engaging tone
+- Confident delivery style
+- No filler words
 5. OVERALL SUMMARY
-
 - Give a short summary of strengths and key improvement areas.
 - Provide a final rating (0-10).`;
-
-      const audioPart = {
-        inlineData: {
-          data: base64Audio,
-          mimeType: audioBlob.type || 'audio/webm',
-        },
-      };
 
       let result;
       let retries = 3;
       while (retries > 0) {
         try {
-          result = await model.generateContent([promptText, audioPart]);
+          const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "llama3-70b-8192",
+              messages: [{ role: "user", content: promptText }],
+              temperature: 0.7,
+            }),
+          });
+          
+          if (!response.ok) {
+            const errBody = await response.text();
+            throw new Error(`Groq API error: ${response.status} ${errBody}`);
+          }
+          
+          result = await response.json();
           break; // Success
         } catch (e: any) {
           retries--;
-          console.warn(`Gemini API failed, retrying... (${retries} retries left)`, e);
+          console.warn(`Groq API failed, retrying... (${retries} retries left)`, e);
           if (retries === 0) throw e;
           // Exponential backoff to handle free tier 429 quota limits gracefully
           await new Promise((r) => setTimeout(r, (4 - retries) * 3000));
         }
       }
-      const responseText = result!.response.text();
+      const responseText = result.choices[0].message.content;
 
       let aiFeedback = responseText;
       let idealSpeech = "";
