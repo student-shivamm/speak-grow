@@ -61,19 +61,32 @@ const IdealSpeechButton = ({ analysis, record, boldHeadings }: IdealSpeechButton
   const generateSpeech = async () => {
     if (speech) return; // Already have it
     setLoading(true);
+    const prompt = `Topic: "${record.topic}"\nUser transcript: "${record.transcript}"\n\nGenerate a high-quality, engaging ideal speech (~250-300 words) INSPIRED by the user's transcript. Retain their general ideas but make it significantly better with a strong opening, clear structure, engaging tone, and no filler words. ONLY output the speech text, nothing else.`;
+    
     try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      if (!apiKey) {
-        setSpeech("Unable to generate ideal speech: API key missing.");
-        return;
+      // Try Groq first (fastest)
+      const grokApiKey = import.meta.env.VITE_GROK_API_KEY;
+      if (grokApiKey) {
+        const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${grokApiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "llama-3.1-8b-instant", messages: [{ role: "user", content: prompt }], temperature: 0.7, max_tokens: 600 })
+        });
+        if (groqRes.ok) {
+          const data = await groqRes.json();
+          const text = data?.choices?.[0]?.message?.content?.trim();
+          if (text) { setSpeech(text); return; }
+        }
       }
+      
+      // Fallback to Gemini
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      if (!apiKey) { setSpeech("Unable to generate ideal speech: API key missing."); return; }
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", generationConfig: { temperature: 0.7 } });
-      const result = await model.generateContent(
-        `Topic: "${record.topic}"\nUser transcript: "${record.transcript}"\n\nGenerate a high-quality, engaging ideal speech (~250-300 words) INSPIRED by the user's transcript. Retain their general ideas but make it significantly better with a strong opening, clear structure, engaging tone, and no filler words. ONLY output the speech text, nothing else.`
-      );
+      const result = await model.generateContent(prompt);
       setSpeech(result.response.text().trim());
-    } catch (e) {
+    } catch (e: any) {
       console.error("[SpeakGrow] On-demand ideal speech generation failed:", e);
       setSpeech("Failed to generate ideal speech. Please try again later.");
     } finally {

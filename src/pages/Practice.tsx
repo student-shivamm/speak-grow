@@ -336,7 +336,7 @@ Task: You are an expert public speaking coach. Generate a high-quality, engaging
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            model: "llama3-8b-8192",
+            model: "llama-3.1-8b-instant",
             messages: [{ role: "user", content: groqPrompt }],
             temperature: 0.7,
             max_tokens: 600
