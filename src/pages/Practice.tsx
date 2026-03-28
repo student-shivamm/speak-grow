@@ -35,6 +35,11 @@ const PracticePage = () => {
   const socketRef = useRef<WebSocket | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number>(0);
+  const transcriptRef = useRef("");
+
+  useEffect(() => {
+    transcriptRef.current = transcript;
+  }, [transcript]);
 
   useEffect(() => {
     // Check if browser supports required APIs
@@ -165,8 +170,10 @@ const PracticePage = () => {
     setIsRecording(false);
     setInterimTranscript("");
 
-    const finalTranscript = transcript + interimTranscript;
-    const duration = elapsed;
+    const duration = Math.floor((Date.now() - startTimeRef.current) / 1000);
+    const finalTranscript = (transcriptRef.current + " " + interimTranscript).trim() || "No transcript recorded.";
+
+    const localAnalysis = analyzeSpeech(finalTranscript, duration);
 
     if (duration < 10) {
       setError("Recording was too short. Please record for at least 10 seconds.");
@@ -221,8 +228,6 @@ const PracticePage = () => {
       if (!apiKey) {
         throw new Error("Your VITE_GEMINI_API_KEY environment variable is missing! Please add it in your .env file.");
       }
-
-      const localAnalysis = analyzeSpeech(finalTranscript, duration);
 
       const promptText = `Analyze the following speech transcript AND the provided audio recording. Provide a detailed public speaking evaluation for the topic: "${topic}". Pay close attention to the raw AUDIO to evaluate Pitch, Vocal Energy, Emotions, tone, and hesitations directly from the sound.
 
@@ -291,7 +296,6 @@ Provide the response strictly in this exact order format:
 User Blueprint/Transcript: "${finalTranscript}"
 
 Task: You are an expert public speaking coach. Generate a high-quality, engaging ideal speech (~250-300 words). It should be INSPIRED by the user's actual transcript, retaining their general ideas but making it significantly better with a strong and creative opening, clear deep structure, engaging professional tone, and zero filler words. ONLY output the transcript of the speech, no introductions, greetings, quotes, or formatting.`;
-
       const groqPromise = grokApiKey ? fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -304,17 +308,22 @@ Task: You are an expert public speaking coach. Generate a high-quality, engaging
           temperature: 0.7,
           max_tokens: 600
         })
-      }).then(res => res.ok ? res.json() : null).catch(() => null) : Promise.resolve(null);
+      }).then(res => res.ok ? res.json() : null)
+        .catch(err => {
+          console.warn("Groq Ideal Speech failed:", err);
+          return null;
+        }) : Promise.resolve(null);
 
-      // Ensure the UI never hangs forever by enforcing a strict 35-second timeout limit
+      // Ensure the UI never hangs forever by enforcing a strict 25-second timeout limit
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Request timed out after 35 seconds. Please try again.")), 35000)
+        setTimeout(() => reject(new Error("Request timed out after 25 seconds. Please try again.")), 25000)
       );
 
       // Fire both requests concurrently (Gemini for audio, Groq for long ideal text)
+      // We wrap the Gemini call in its own catch so it doesn't fail the whole block
       const [analysisResult, groqResult] = await Promise.race([
         Promise.all([
-          model.generateContent([promptText, audioPart]),
+          model.generateContent([promptText, audioPart]).catch(e => { throw e; }),
           groqPromise
         ]),
         timeoutPromise
