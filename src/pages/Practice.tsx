@@ -72,6 +72,8 @@ const PracticePage = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const isRecordingRef = useRef(false);
   const isAnalyzingRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const safetyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     isRecordingRef.current = isRecording;
@@ -168,6 +170,19 @@ const PracticePage = () => {
     setIsAnalyzing(true);
     setError(null);
 
+    // Create abort controller for this analysis session
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
+    // GLOBAL SAFETY TIMEOUT: If analysis takes longer than 90s, force-fail
+    // This is the ultimate safety net against infinite "Analyzing" state
+    safetyTimeoutRef.current = setTimeout(() => {
+      console.error("[SpeakGrow] SAFETY TIMEOUT: Analysis exceeded 90 seconds. Force-stopping.");
+      abortController.abort();
+      setIsAnalyzing(false);
+      setError("Analysis took too long and was automatically stopped. Please try again with a shorter recording.");
+    }, 90000);
+
     // Capture refs BEFORE any state changes to avoid stale closures
     const capturedTranscript = transcriptRef.current;
     const capturedInterim = interimTranscriptRef.current;
@@ -186,13 +201,14 @@ const PracticePage = () => {
     const duration = Math.floor((Date.now() - startTimeRef.current) / 1000);
     const finalTranscript = (capturedTranscript + " " + capturedInterim).trim() || "No transcript recorded.";
 
-    console.log("[SpeakGrow] Duration:", duration, "s | Transcript length:", finalTranscript.length, "chars");
+    console.log("[SpeakGrow] [STEP 1/7] Recording stopped. Duration:", duration, "s | Transcript length:", finalTranscript.length, "chars");
 
     const localAnalysis = analyzeSpeech(finalTranscript, duration);
 
     if (duration < 10) {
       setError("Recording was too short. Please record for at least 10 seconds.");
       setIsAnalyzing(false);
+      if (safetyTimeoutRef.current) clearTimeout(safetyTimeoutRef.current);
       return;
     }
 
@@ -203,39 +219,91 @@ const PracticePage = () => {
         setError("We couldn't hear you clearly. Please ensure your microphone is picking up your voice and speak a few words.");
       }
       setIsAnalyzing(false);
+      if (safetyTimeoutRef.current) clearTimeout(safetyTimeoutRef.current);
       return;
     }
 
-    // Stop media recorder and get audio blob
+    // Check if aborted before proceeding
+    if (abortController.signal.aborted) return;
+
+    // Stop media recorder and get audio blob WITH TIMEOUT
+    // This is the primary fix: MediaRecorder.onstop can hang forever if the
+    // recorder enters an error state without firing onstop.
+    console.log("[SpeakGrow] [STEP 2/7] Stopping MediaRecorder...");
     let audioBlob: Blob | null = null;
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      const stopPromise = new Promise<Blob>((resolve) => {
-        mediaRecorderRef.current!.onstop = () => {
-          const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-          resolve(blob);
-        };
-      });
-      mediaRecorderRef.current.stop();
-      audioBlob = await stopPromise;
+      try {
+        const stopPromise = new Promise<Blob>((resolve, reject) => {
+          const recorder = mediaRecorderRef.current!;
+          // Wire up error handler to prevent silent hangs
+          recorder.onerror = (event) => {
+            console.error("[SpeakGrow] MediaRecorder error during stop:", event);
+            // Still try to create blob from whatever chunks we have
+            if (audioChunksRef.current.length > 0) {
+              resolve(new Blob(audioChunksRef.current, { type: 'audio/webm' }));
+            } else {
+              reject(new Error("MediaRecorder error and no audio chunks available."));
+            }
+          };
+          recorder.onstop = () => {
+            const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+            console.log("[SpeakGrow] [STEP 2/7] MediaRecorder stopped. Blob size:", (blob.size / 1024).toFixed(1), "KB");
+            resolve(blob);
+          };
+        });
+
+        // Timeout for MediaRecorder stop: 5 seconds max
+        const timeoutPromise = new Promise<Blob>((resolve, reject) => {
+          setTimeout(() => {
+            console.warn("[SpeakGrow] MediaRecorder.onstop timed out after 5s. Using available chunks.");
+            if (audioChunksRef.current.length > 0) {
+              resolve(new Blob(audioChunksRef.current, { type: 'audio/webm' }));
+            } else {
+              reject(new Error("MediaRecorder stop timed out and no audio chunks available."));
+            }
+          }, 5000);
+        });
+
+        mediaRecorderRef.current.stop();
+        audioBlob = await Promise.race([stopPromise, timeoutPromise]);
+      } catch (recorderErr) {
+        console.error("[SpeakGrow] MediaRecorder stop failed:", recorderErr);
+      }
+
       // Stop microphone tracks
-      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      try {
+        mediaRecorderRef.current?.stream.getTracks().forEach(track => track.stop());
+      } catch (e) { /* tracks may already be stopped */ }
+    } else {
+      // MediaRecorder already inactive — try to use collected chunks
+      console.warn("[SpeakGrow] MediaRecorder already inactive. Using collected chunks.");
+      if (audioChunksRef.current.length > 0) {
+        audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+      }
     }
 
-    if (!audioBlob) {
+    if (!audioBlob || audioBlob.size === 0) {
       setError("Failed to capture audio recording. Please try again.");
       setIsAnalyzing(false);
+      if (safetyTimeoutRef.current) clearTimeout(safetyTimeoutRef.current);
       return;
     }
 
+    // Check if aborted before proceeding
+    if (abortController.signal.aborted) return;
+
     // Check credits before calling AI
+    console.log("[SpeakGrow] [STEP 3/7] Checking auth and credits...");
     if (!session || !profile) {
       setIsAnalyzing(false);
+      if (safetyTimeoutRef.current) clearTimeout(safetyTimeoutRef.current);
       navigate("/auth");
       return;
     }
     
     if (profile.credits <= 0) {
       setIsAnalyzing(false);
+      if (safetyTimeoutRef.current) clearTimeout(safetyTimeoutRef.current);
       navigate("/upgrade");
       return;
     }
@@ -244,6 +312,12 @@ const PracticePage = () => {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       if (!apiKey) {
         throw new Error("Your VITE_GEMINI_API_KEY environment variable is missing! Please add it in your .env file.");
+      }
+
+      // Check if aborted before AI calls
+      if (abortController.signal.aborted) {
+        console.log("[SpeakGrow] Analysis aborted before AI call.");
+        return;
       }
 
       const promptText = `Analyze the following speech transcript AND the provided audio recording. Provide a detailed public speaking evaluation for the topic: "${topic}". Pay close attention to the raw AUDIO to evaluate Pitch, Vocal Energy, Emotions, tone, and hesitations directly from the sound.
@@ -295,7 +369,7 @@ Provide the response strictly in this exact order format:
       });
 
       // Convert audio blob to base64 for Gemini multimodal input
-      console.log("[SpeakGrow] Audio blob size:", (audioBlob!.size / 1024).toFixed(1), "KB");
+      console.log("[SpeakGrow] [STEP 4/7] Converting audio to base64. Blob size:", (audioBlob!.size / 1024).toFixed(1), "KB");
       const audioBase64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onloadend = () => {
@@ -350,23 +424,42 @@ Task: You are an expert public speaking coach. Generate a high-quality, engaging
 
       // --- GEMINI: Audio Analysis (the critical path) ---
       // Use a generous 45-second timeout since large audio uploads can take time
-      console.log("[SpeakGrow] Sending audio to Gemini 2.5 Flash...");
+      console.log("[SpeakGrow] [STEP 5/7] Sending audio to Gemini 2.5 Flash...");
       const geminiPromise = model.generateContent([promptText, audioPart]);
 
       const timeoutPromise = new Promise<never>((_, reject) => 
         setTimeout(() => reject(new Error("AI analysis timed out. This can happen with longer recordings. Please try again.")), 45000)
       );
 
+      // Also abort if user clicked cancel
+      const abortPromise = new Promise<never>((_, reject) => {
+        abortController.signal.addEventListener('abort', () => 
+          reject(new Error("Analysis was cancelled."))
+        );
+      });
+
       // Gemini and Groq run fully independently
       // If Groq fails or times out, we still get Gemini results
       // If Gemini times out, we show an error
       const [analysisResult, groqResult] = await Promise.all([
-        Promise.race([geminiPromise, timeoutPromise]),
-        groqPromise  // Already has its own 10s timeout, will resolve to null on failure
+        Promise.race([geminiPromise, timeoutPromise, abortPromise]),
+        groqPromise  // Already has its own 20s timeout, will resolve to null on failure
       ]);
       
-      console.log("[SpeakGrow] Gemini response received!");
-      let responseText = (analysisResult as any).response.text();
+      // Check if aborted after API call
+      if (abortController.signal.aborted) {
+        console.log("[SpeakGrow] Analysis aborted after API response.");
+        return;
+      }
+
+      console.log("[SpeakGrow] [STEP 5/7] Gemini response received!");
+      let responseText: string;
+      try {
+        responseText = (analysisResult as any).response.text();
+      } catch (textErr) {
+        console.error("[SpeakGrow] Failed to extract text from Gemini response:", textErr);
+        throw new Error("AI returned an empty or blocked response. Please try recording again.");
+      }
 
       // Extract XML SCORES cleanly using JSON.parse
       const scoresMatch = responseText.match(/<SCORES>([\s\S]*?)<\/SCORES>/i);
@@ -389,7 +482,7 @@ Task: You are an expert public speaking coach. Generate a high-quality, engaging
       let aiFeedback = responseText;
       
       // Extract ideal speech from Groq result
-      console.log("[SpeakGrow] Groq result:", groqResult ? "received" : "null/failed");
+      console.log("[SpeakGrow] [STEP 6/7] Groq result:", groqResult ? "received" : "null/failed");
       let idealSpeech = groqResult?.choices?.[0]?.message?.content?.trim() || "";
       
       // If Groq failed, generate ideal speech via Gemini as fallback
@@ -443,6 +536,7 @@ Task: You are an expert public speaking coach. Generate a high-quality, engaging
       };
 
       // Consume credit in Supabase now that analysis succeeded
+      console.log("[SpeakGrow] [STEP 7/7] Analysis complete. Consuming credit and navigating...");
       if (session && profile) {
         const newCredits = profile.credits - 1;
         const { error: dbError } = await supabase
@@ -459,10 +553,23 @@ Task: You are an expert public speaking coach. Generate a high-quality, engaging
       saveSpeechRecord(record);
       setLastAnalysis({ ...record, analysis: localAnalysis } as any);
 
+      // Clear safety timeout since we succeeded
+      if (safetyTimeoutRef.current) clearTimeout(safetyTimeoutRef.current);
+
       // Navigate to feedback (resetting state first)
       setIsAnalyzing(false);
       navigate("/feedback", { state: { analysis: localAnalysis, record } });
     } catch (err: any) {
+      // Clear safety timeout on error too
+      if (safetyTimeoutRef.current) clearTimeout(safetyTimeoutRef.current);
+
+      // Don't show error if user explicitly cancelled
+      if (abortController.signal.aborted) {
+        console.log("[SpeakGrow] Analysis was cancelled by user.");
+        setIsAnalyzing(false);
+        return;
+      }
+
       console.error("[SpeakGrow] AI Analysis Failed:", err);
       setIsAnalyzing(false);
       
@@ -470,6 +577,8 @@ Task: You are an expert public speaking coach. Generate a high-quality, engaging
       if (msg.includes("timed out")) {
         setError("AI analysis timed out — this can happen with longer recordings or slow connections. Please try again.");
       } else if (msg.includes("API_KEY")) {
+        setError(msg);
+      } else if (msg.includes("empty or blocked")) {
         setError(msg);
       } else {
         setError("AI analysis failed: " + (msg || "Please check your internet connection and try again."));
@@ -596,6 +705,13 @@ Task: You are an expert public speaking coach. Generate a high-quality, engaging
                 </p>
                 <button
                   onClick={() => {
+                    // Actually abort in-flight API calls
+                    if (abortControllerRef.current) {
+                      abortControllerRef.current.abort();
+                    }
+                    if (safetyTimeoutRef.current) {
+                      clearTimeout(safetyTimeoutRef.current);
+                    }
                     setIsAnalyzing(false);
                     setError("Analysis was cancelled. You can try recording again.");
                   }}
