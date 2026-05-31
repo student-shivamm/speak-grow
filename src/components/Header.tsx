@@ -18,6 +18,9 @@ const Header = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
   const { session, profile, signOut } = useAuthStore();
+  const { credits: localCredits } = useCreditStore();
+  
+  const credits = profile ? profile.credits : localCredits;
 
   return (
     <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-md border-b border-border">
@@ -46,12 +49,10 @@ const Header = () => {
         {/* Right side */}
         <div className="hidden md:flex items-center gap-3">
           {/* Credits Badge */}
-          {session && profile && (
-            <Link to="/upgrade" className="flex items-center gap-1.5 bg-accent/10 text-accent border border-accent/20 rounded-full px-3 py-1.5 text-sm font-semibold hover:bg-accent/20 transition-colors">
-              <Zap className="h-3.5 w-3.5" />
-              {profile.credits} credit{profile.credits !== 1 ? "s" : ""}
-            </Link>
-          )}
+          <Link to="/upgrade" className="flex items-center gap-1.5 bg-accent/10 text-accent border border-accent/20 rounded-full px-3 py-1.5 text-sm font-semibold hover:bg-accent/20 transition-colors">
+            <Zap className="h-3.5 w-3.5" />
+            {credits} credit{credits !== 1 ? "s" : ""}
+          </Link>
           <Link to="/practice">
             <Button variant="default" size="sm" className="gradient-brand shadow-brand gap-1.5">
               <Mic className="h-4 w-4" />
@@ -108,12 +109,10 @@ const Header = () => {
               ))}
               <div className="flex flex-col gap-3 mt-2 pt-2 border-t border-border">
                 <div className="flex items-center justify-between w-full">
-                  {session && profile && (
-                    <Link to="/upgrade" className="flex items-center gap-1.5 bg-accent/10 text-accent border border-accent/20 rounded-full px-3 py-1.5 text-sm font-semibold">
-                      <Zap className="h-3.5 w-3.5" />
-                      {profile.credits} credit{profile.credits !== 1 ? "s" : ""}
-                    </Link>
-                  )}
+                  <Link to="/upgrade" className="flex items-center gap-1.5 bg-accent/10 text-accent border border-accent/20 rounded-full px-3 py-1.5 text-sm font-semibold">
+                    <Zap className="h-3.5 w-3.5" />
+                    {credits} credit{credits !== 1 ? "s" : ""}
+                  </Link>
                   {session ? (
                     <Button variant="ghost" size="sm" onClick={() => { signOut(); setMobileOpen(false); }} className="gap-1.5">
                       <LogOut className="h-4 w-4" />

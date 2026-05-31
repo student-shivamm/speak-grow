@@ -19,9 +19,9 @@ const DEEPGRAM_WS_URL = "wss://api.deepgram.com/v1/listen?model=nova-2&smart_for
 const PracticePage = () => {
   const navigate = useNavigate();
   const { profile, session, refreshProfile } = useAuthStore();
-  const { setLastAnalysis } = useCreditStore();
+  const { setLastAnalysis, credits: localCredits, consumeCredit } = useCreditStore();
 
-  const credits = profile ? profile.credits : 0;
+  const credits = profile ? profile.credits : localCredits;
 
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState("");
@@ -293,15 +293,9 @@ const PracticePage = () => {
     if (abortController.signal.aborted) return;
 
     // Check credits before calling AI
-    console.log("[SpeakGrow] [STEP 3/7] Checking auth and credits...");
-    if (!session || !profile) {
-      setIsAnalyzing(false);
-      if (safetyTimeoutRef.current) clearTimeout(safetyTimeoutRef.current);
-      navigate("/auth");
-      return;
-    }
+    console.log("[SpeakGrow] [STEP 3/7] Checking credits...");
     
-    if (profile.credits <= 0) {
+    if (credits <= 0) {
       setIsAnalyzing(false);
       if (safetyTimeoutRef.current) clearTimeout(safetyTimeoutRef.current);
       navigate("/upgrade");
@@ -547,6 +541,8 @@ Task: You are an expert public speaking coach. Generate a high-quality, engaging
         if (!dbError) {
           await refreshProfile();
         }
+      } else {
+        consumeCredit();
       }
       setCreditConsumed(true);
 
